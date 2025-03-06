@@ -1244,7 +1244,8 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             example['gt_pv_seg_mask'] = DC(to_tensor(anns_results['gt_pv_semantic_mask']), cpu_only=False)
         
         if input_dict['segmap'] is not None:
-            example['gt_segmap'] = DC(to_tensor(input_dict['segmap']), cpu_only=False)
+            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))
+            example['gt_segmap'] = DC(to_tensor(segmap), cpu_only=False)
          
         return example
 

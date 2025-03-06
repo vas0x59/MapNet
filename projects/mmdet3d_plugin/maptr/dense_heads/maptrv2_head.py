@@ -900,7 +900,9 @@ class MapTRv2Head(DETRHead):
         if self.aux_seg['segmap']:
             if preds_dicts['segmap'] is not None:
                 segmap_output = preds_dicts['segmap']
-                loss_segmap = self.loss_segmap(segmap_output, gt_segmap.float())
+                num_imgs = pv_seg_output.size(0)
+                segmap_gt = torch.stack([gt_segmap[i] for i in range(num_imgs)],dim=0)
+                loss_segmap = self.loss_segmap(segmap_output, segmap_gt.float())
                 loss_dict['loss_segmap'] = loss_segmap
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:
