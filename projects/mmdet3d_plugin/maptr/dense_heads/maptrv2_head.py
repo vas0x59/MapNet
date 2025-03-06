@@ -131,6 +131,9 @@ class MapTRv2Head(DETRHead):
                               pos_weight=2.13,
                               loss_weight=1.0),
                  loss_dir=dict(type='PtsDirCosLoss', loss_weight=2.0),
+                 loss_segmap=dict(type='SimpleLoss',
+                            pos_weight=1.0,
+                            loss_weight=2.0),
                  **kwargs):
 
         self.bev_h = bev_h
@@ -195,6 +198,7 @@ class MapTRv2Head(DETRHead):
 
         self.loss_seg = build_loss(loss_seg)
         self.loss_pv_seg = build_loss(loss_pv_seg)
+        self.loss_segmap = build_loss(loss_segmap)
         
         self._init_layers()
 
@@ -890,10 +894,14 @@ class MapTRv2Head(DETRHead):
                     pv_seg_output = preds_dicts['pv_seg']
                     num_imgs = pv_seg_output.size(0)
                     pv_seg_gt = torch.stack([gt_pv_seg_mask[i] for i in range(num_imgs)],dim=0)
+                    print(pv_seg_gt.shape)
                     loss_pv_seg = self.loss_pv_seg(pv_seg_output, pv_seg_gt.float())
                     loss_dict['loss_pv_seg'] = loss_pv_seg
         if self.aux_seg['segmap']:
-            pass
+            if preds_dicts['segmap'] is not None:
+                segmap_output = preds_dicts['segmap']
+                loss_segmap = self.loss_segmap(segmap_output, gt_segmap.float())
+                loss_dict['loss_segmap'] = loss_segmap
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:
             binary_labels_list = [

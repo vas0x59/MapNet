@@ -208,6 +208,9 @@ model = dict(
             loss_weight=1.0),
         loss_pv_seg=dict(type='SimpleLoss', 
                     pos_weight=1.0,
+                    loss_weight=2.0),
+        loss_segmap=dict(type='SimpleLoss',
+                    pos_weight=1.0,
                     loss_weight=2.0),),
     # model training and testing settings
     train_cfg=dict(pts=dict(
