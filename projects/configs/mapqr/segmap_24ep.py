@@ -91,7 +91,7 @@ model = dict(
         num_outs=_num_levels_,
         relu_before_extra_convs=True),
     pts_bbox_head=dict(
-        type='MapTRv2Head',
+        type='MapNetHead',
         bev_h=bev_h_,
         bev_w=bev_w_,
         num_query=900,
@@ -209,7 +209,7 @@ model = dict(
         loss_pv_seg=dict(type='SimpleLoss', 
                     pos_weight=1.0,
                     loss_weight=2.0),
-        loss_segmap=dict(type='SimpleLoss',
+        loss_segmap=dict(type='SimpleLoss_v1',
                     pos_weight=1.0,
                     loss_weight=2.0),),
     # model training and testing settings
@@ -271,10 +271,10 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=4
+samples_per_gpu=6
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=8, # TODO 12
+    workers_per_gpu=4, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -359,7 +359,7 @@ log_config = dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
                 project='MapNet',   # Название проекта в WandB
-                name='MapQR + segmap 3 layers ()',     # Имя эксперимента
+                name='MapQR + segmap 3 layers (pc, da, rs)',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
                     batch_size=samples_per_gpu*2,
                     model='mapqr',

@@ -75,7 +75,7 @@ def denormalize_2d_pts(pts, pc_range):
 
 
 @HEADS.register_module()
-class MapTRv2Head(DETRHead):
+class MapNetHead(DETRHead):
     """Head of Detr3D.
     Args:
         with_box_refine (bool): Whether to refine the reference points
@@ -112,7 +112,9 @@ class MapTRv2Head(DETRHead):
                     use_aux_seg=False,
                     bev_seg=False,
                     pv_seg=False,
+                    segmap=True,
                     seg_classes=1,
+                    segmap_classes=3,
                     feat_down_sample=32,
                  ),
                  z_cfg = dict(
@@ -129,6 +131,9 @@ class MapTRv2Head(DETRHead):
                               pos_weight=2.13,
                               loss_weight=1.0),
                  loss_dir=dict(type='PtsDirCosLoss', loss_weight=2.0),
+                 loss_segmap=dict(type='SimpleLoss',
+                            pos_weight=1.0,
+                            loss_weight=2.0),
                  **kwargs):
 
         self.bev_h = bev_h
@@ -173,7 +178,7 @@ class MapTRv2Head(DETRHead):
         self.aux_seg = aux_seg
         self.z_cfg = z_cfg
         
-        super(MapTRv2Head, self).__init__(
+        super(MapNetHead, self).__init__(
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
@@ -193,6 +198,7 @@ class MapTRv2Head(DETRHead):
 
         self.loss_seg = build_loss(loss_seg)
         self.loss_pv_seg = build_loss(loss_pv_seg)
+        self.loss_segmap = build_loss(loss_segmap)
         
         self._init_layers()
 
@@ -256,6 +262,13 @@ class MapTRv2Head(DETRHead):
                     nn.ReLU(inplace=True),
                     nn.Conv2d(self.embed_dims, self.aux_seg['seg_classes'], kernel_size=1, padding=0)
                 )
+        if self.aux_seg['segmap']:
+            self.segmap_head = nn.Sequential(
+                nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
+                # nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(self.embed_dims, self.aux_seg['segmap_classes'], kernel_size=1, padding=0)
+            )
 
         if not self.as_two_stage:
             if 'BEVFormerEncoder' in self.bev_encoder_type:
@@ -446,6 +459,8 @@ class MapTRv2Head(DETRHead):
             if self.aux_seg['pv_seg']:
                 outputs_pv_seg = self.pv_seg_head(mlvl_feats[-1].flatten(0,1))
                 outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h, feat_w)
+        if self.aux_seg['segmap']:
+            outputs_segmap = self.segmap_head(seg_bev_embed)
 
         outs = {
             'bev_embed': bev_embed,
@@ -458,6 +473,7 @@ class MapTRv2Head(DETRHead):
             'depth': depth,
             'seg': outputs_seg,
             'pv_seg': outputs_pv_seg,
+            'segmap': outputs_segmap,
             "one2many_outs": dict(
                 all_cls_scores=outputs_classes_one2many,
                 all_bbox_preds=outputs_coords_one2many,
@@ -467,6 +483,7 @@ class MapTRv2Head(DETRHead):
                 enc_pts_preds=None,
                 seg=None,
                 pv_seg=None,
+                segmap=None,
             )
         }
 
@@ -776,6 +793,7 @@ class MapTRv2Head(DETRHead):
              gt_seg_mask,
              gt_pv_seg_mask,
              preds_dicts,
+             gt_segmap,
              gt_bboxes_ignore=None,
              img_metas=None):
         """"Loss function.
@@ -876,8 +894,16 @@ class MapTRv2Head(DETRHead):
                     pv_seg_output = preds_dicts['pv_seg']
                     num_imgs = pv_seg_output.size(0)
                     pv_seg_gt = torch.stack([gt_pv_seg_mask[i] for i in range(num_imgs)],dim=0)
+                    # print(pv_seg_gt.shape)
                     loss_pv_seg = self.loss_pv_seg(pv_seg_output, pv_seg_gt.float())
                     loss_dict['loss_pv_seg'] = loss_pv_seg
+        if self.aux_seg['segmap']:
+            if preds_dicts['segmap'] is not None:
+                segmap_output = preds_dicts['segmap']
+                num_imgs = pv_seg_output.size(0)
+                segmap_gt = torch.stack([gt_segmap[i] for i in range(num_imgs)],dim=0)
+                loss_segmap = self.loss_segmap(segmap_output, segmap_gt.float())
+                loss_dict['loss_segmap'] = loss_segmap
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:
             binary_labels_list = [
