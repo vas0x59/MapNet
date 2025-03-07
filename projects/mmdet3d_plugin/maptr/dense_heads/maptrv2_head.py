@@ -880,7 +880,7 @@ class MapTRv2Head(DETRHead):
 
         loss_dict = dict()
         if self.aux_seg['use_aux_seg']:
-            import ipdb;ipdb.set_trace()
+            #import ipdb;ipdb.set_trace()
             if self.aux_seg['bev_seg']:
                 if preds_dicts['seg'] is not None:
                     seg_output = preds_dicts['seg']
@@ -894,7 +894,7 @@ class MapTRv2Head(DETRHead):
                     pv_seg_output = preds_dicts['pv_seg']
                     num_imgs = pv_seg_output.size(0)
                     pv_seg_gt = torch.stack([gt_pv_seg_mask[i] for i in range(num_imgs)],dim=0)
-                    print(pv_seg_gt.shape)
+                    #print(pv_seg_gt.shape)
                     loss_pv_seg = self.loss_pv_seg(pv_seg_output, pv_seg_gt.float())
                     loss_dict['loss_pv_seg'] = loss_pv_seg
         if self.aux_seg['segmap']:

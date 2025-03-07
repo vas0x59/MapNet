@@ -271,10 +271,10 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-
+samples_per_gpu=4
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=0, # TODO 12
+    samples_per_gpu=samples_per_gpu,
+    workers_per_gpu=8, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -354,7 +354,18 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
+        dict(type='TensorboardLoggerHook'),
+        dict(
+            type='WandbLoggerHook',
+            init_kwargs=dict(
+                project='MapNet',   # Название проекта в WandB
+                name='MapQR + segmap 3 layers ()',     # Имя эксперимента
+                config=dict(                # Дополнительные настройки эксперимента
+                    batch_size=samples_per_gpu*2,
+                    model='mapqr',
+                )
+            )
+        )
     ])
 fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=1, interval=1)
