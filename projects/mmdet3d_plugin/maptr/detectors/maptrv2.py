@@ -171,7 +171,7 @@ class MapTRv2(MVXTwoStageDetector):
             multi_gt_labels_3d[i] = each_gt_labels_3d.repeat(k_one2many)
         # import ipdb;ipdb.set_trace()
         one2many_outs = outs['one2many_outs']
-        loss_one2many_inputs = [multi_gt_bboxes_3d, multi_gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, one2many_outs]
+        loss_one2many_inputs = [multi_gt_bboxes_3d, multi_gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, one2many_outs, gt_segmap]
         loss_dict_one2many = self.pts_bbox_head.loss(*loss_one2many_inputs, img_metas=img_metas)
 
         lambda_one2many = self.pts_bbox_head.lambda_one2many
