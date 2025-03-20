@@ -274,6 +274,11 @@ class MapNetHead(DETRHead):
                 )
         if self.aux_seg['segmap']:
             self.segmap_head = build_transformer(self.seg_transformer_head)
+            self.mlp = nn.Sequential(
+            nn.Linear(100, self.embed_dims),  # (B, 100, 20000, 1) -> (B, 64, 20000, 1)
+            nn.ReLU(),
+            nn.Linear(self.embed_dims, 1)  # (B, 64, 20000, 1) -> (B, 1, 20000, 1)
+        )
             # self.segmap_head = nn.Sequential(
             #     nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
             #     # nn.BatchNorm2d(128),
@@ -493,8 +498,12 @@ class MapNetHead(DETRHead):
                 seg_query_pos,
                 hw_lvl=hw_lvl)
             
-            mask_stuff = mask_stuff.mean(dim=1, keepdim=True) 
             mask_stuff = mask_stuff.squeeze(-1)
+            mask_stuff = mask_stuff.permute(0, 2, 1) 
+            mask_stuff = self.mlp(mask_stuff)
+            mask_stuff = mask_stuff.permute(0, 2, 1) 
+            
+            # mask_stuff = mask_stuff.mean(dim=1, keepdim=True) 
             mask_stuff = mask_stuff.contiguous().view(-1, 1, self.bev_h, self.bev_w)
             outputs_segmap = mask_stuff
             # transformer_seg_feat = seg_mask_embed[-1]
