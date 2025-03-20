@@ -63,7 +63,7 @@ aux_seg_cfg = dict(
     pv_seg=True,
     segmap=True,
     seg_classes=1,
-    segmap_classes=3, # layers=['ped_crossing', 'drivable_area', 'road_segment']
+    segmap_classes=1, # layers=['ped_crossing', 'drivable_area', 'road_segment']
     feat_down_sample=32,
     pv_thickness=1,
 )
@@ -91,7 +91,7 @@ model = dict(
         num_outs=_num_levels_,
         relu_before_extra_convs=True),
     pts_bbox_head=dict(
-        type='MapNetHead',
+        type='SegMapHead',
         bev_h=bev_h_,
         bev_w=bev_w_,
         num_query=900,
@@ -209,8 +209,7 @@ model = dict(
         loss_pv_seg=dict(type='SimpleLoss', 
                     pos_weight=1.0,
                     loss_weight=2.0),
-        loss_segmap=dict(type='SimpleLoss_v1',
-                    pos_weight=1.0,
+        loss_segmap=dict(type='DiceLoss',
                     loss_weight=2.0),),
     # model training and testing settings
     train_cfg=dict(pts=dict(
@@ -239,16 +238,17 @@ train_pipeline = [
     dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
     dict(type='PhotoMetricDistortionMultiViewImage'),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
-    dict(
-        type='CustomLoadPointsFromFile', # LoadPointsFromFile
-        coord_type='LIDAR',
-        load_dim=5,
-        use_dim=5,
-        reduce_beams=32),
-    dict(type='CustomPointToMultiViewDepth', downsample=1, grid_config=grid_config),
-    dict(type='PadMultiViewImageDepth', size_divisor=32), 
+    # dict(
+    #     type='CustomLoadPointsFromFile', # LoadPointsFromFile
+    #     coord_type='LIDAR',
+    #     load_dim=5,
+    #     use_dim=5,
+    #     reduce_beams=32),
+    # dict(type='CustomPointToMultiViewDepth', downsample=1, grid_config=grid_config),
+    # dict(type='PadMultiViewImageDepth', size_divisor=32), 
+    dict(type='PadMultiViewImage', size_divisor=32), 
     dict(type='DefaultFormatBundle3D', with_gt=False, with_label=False,class_names=map_classes),
-    dict(type='CustomCollect3D', keys=['img', 'gt_depth'])
+    dict(type='CustomCollect3D', keys=['img' ]) # , 'gt_depth'
 ]
 
 test_pipeline = [
@@ -271,10 +271,10 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=6
+samples_per_gpu=2
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=4, # TODO 12
+    workers_per_gpu=12, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -334,16 +334,32 @@ optimizer = dict(
         }),
     weight_decay=0.01)
 
-optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+# optimizer = dict(
+#     type='AdamW',
+#     lr=3e-4,  # 6e-4 / 16
+#     paramwise_cfg=dict(
+#         custom_keys={
+#             'img_backbone': dict(lr_mult=0.1),
+#         }),
+#     weight_decay=0.01)
+
+# optimizer_config = dict(grad_clip=dict(max_norm=15, norm_type=2))
+optimizer_config = dict(type="GradientCumulativeOptimizerHook", cumulative_iters=16, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
 # learning policy
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=500,
+    warmup_iters=4000,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
+# lr_config = dict(
+#     policy='CosineAnnealing',
+#     warmup='linear',
+#     warmup_iters=1000,  # 500 / 16
+#     warmup_ratio=1.0 / 3,
+#     min_lr_ratio=1e-3)
 total_epochs = 24
-evaluation = dict(interval=4, pipeline=test_pipeline, metric='chamfer',
+evaluation = dict(interval=2, pipeline=test_pipeline, metric='chamfer',
                   save_best='NuscMap_chamfer/mAP', rule='greater')
 # total_epochs = 50
 # evaluation = dict(interval=1, pipeline=test_pipeline)
@@ -351,22 +367,22 @@ evaluation = dict(interval=4, pipeline=test_pipeline, metric='chamfer',
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 
 log_config = dict(
-    interval=50,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
         dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
-                project='MapNet',   # Название проекта в WandB
-                name='MapQR + segmap 3 layers (pc, da, rs)',     # Имя эксперимента
+                project='mapnet_test_with_bsz2',   # Название проекта в WandB
+                name='cumulative=16',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
-                    batch_size=samples_per_gpu*2,
+                    batch_size=samples_per_gpu,
                     model='mapqr',
                 )
             )
         )
     ])
-fp16 = dict(loss_scale=512.)
+# fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=1, interval=1)
 # find_unused_parameters=True

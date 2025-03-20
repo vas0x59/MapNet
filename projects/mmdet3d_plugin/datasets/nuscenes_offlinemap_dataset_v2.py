@@ -1239,12 +1239,24 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
         # gt_seg_mask = to_tensor(anns_results['gt_semantic_mask'])
         # gt_pv_seg_mask = to_tensor(anns_results['gt_pv_semantic_mask'])
         if anns_results['gt_semantic_mask'] is not None:
+            # import matplotlib.pyplot as plt
+            # plt.imshow(np.transpose(anns_results['gt_semantic_mask'], (1, 2, 0)), cmap='gray')  # Используем серую цветовую палитру для изображения
+            # plt.title("Second Channel of Segmap")
+            # plt.axis('off')  # Отключаем оси для чистоты отображения
+            # plt.show()
             example['gt_seg_mask'] = DC(to_tensor(anns_results['gt_semantic_mask']), cpu_only=False)
         if anns_results['gt_pv_semantic_mask'] is not None:
             example['gt_pv_seg_mask'] = DC(to_tensor(anns_results['gt_pv_semantic_mask']), cpu_only=False)
-        
+        # import ipdb;ipdb.set_trace()
         if input_dict['segmap'] is not None:
-            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))
+            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[1]
+            segmap = np.expand_dims(segmap, axis=0)
+            
+            # import matplotlib.pyplot as plt
+            # plt.imshow(segmap, cmap='gray')  # Используем серую цветовую палитру для изображения
+            # plt.title("Second Channel of Segmap")
+            # plt.axis('off')  # Отключаем оси для чистоты отображения
+            # plt.show()
             example['gt_segmap'] = DC(to_tensor(segmap), cpu_only=False)
          
         return example
@@ -1555,6 +1567,7 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
                         type=gt_label,
                     )
                     gt_vec_list.append(anno)
+                # gt_anno['segmap'] = gt_sample_dict['segmap'].data.numpy() / 255.0
                 gt_anno['vectors']=gt_vec_list
                 gt_annos.append(gt_anno)
 
@@ -1601,6 +1614,8 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
                 pred_vec_list.append(anno)
 
             pred_anno['vectors'] = pred_vec_list
+            # import ipdb;ipdb.set_trace()
+            # pred_anno['segmap'] = det['segmap']
             pred_annos.append(pred_anno)
 
         if not os.path.exists(self.map_ann_file):
