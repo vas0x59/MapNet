@@ -87,12 +87,12 @@ class PadMultiViewImageDepth(object):
         elif self.size_divisor is not None:
             padded_img = [mmcv.impad_to_multiple(
                 img, self.size_divisor, pad_val=self.pad_val) for img in results['img']]
-            padded_gt_depth = [mmcv.impad_to_multiple(
-                img.numpy(), self.size_divisor, pad_val=self.pad_val) for img in results['gt_depth']]
+            # padded_gt_depth = [mmcv.impad_to_multiple(
+            #     img.numpy(), self.size_divisor, pad_val=self.pad_val) for img in results['gt_depth']]
 
         results['ori_shape'] = [img.shape for img in results['img']]
         results['img'] = padded_img
-        results['gt_depth'] = np.stack(padded_gt_depth)
+        # results['gt_depth'] = np.stack(padded_gt_depth)
         results['img_shape'] = [img.shape for img in padded_img]
         results['pad_shape'] = [img.shape for img in padded_img]
         results['pad_fixed_size'] = self.size
