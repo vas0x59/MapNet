@@ -64,7 +64,7 @@ aux_seg_cfg = dict(
     segmap=True,
     seg_classes=1,
     segmap_classes=1, # layers=['ped_crossing', 'drivable_area', 'road_segment']
-    feat_down_sample=32,
+    feat_down_sample=16,
     pv_thickness=1,
 )
 
@@ -274,7 +274,7 @@ test_pipeline = [
 samples_per_gpu=2
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=12, # TODO 12
+    workers_per_gpu=4, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -344,12 +344,12 @@ optimizer = dict(
 #     weight_decay=0.01)
 
 # optimizer_config = dict(grad_clip=dict(max_norm=15, norm_type=2))
-optimizer_config = dict(type="GradientCumulativeOptimizerHook", cumulative_iters=16, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
+optimizer_config = dict(cumulative_iters=16, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
 # learning policy
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=4000,
+    warmup_iters=2200,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
 # lr_config = dict(
@@ -374,8 +374,8 @@ log_config = dict(
         dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
-                project='mapnet_test_with_bsz2',   # Название проекта в WandB
-                name='cumulative=16',     # Имя эксперимента
+                project='MapNet',   # Название проекта в WandB
+                name='segmap',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
                     batch_size=samples_per_gpu,
                     model='mapqr',
@@ -383,6 +383,6 @@ log_config = dict(
             )
         )
     ])
-# fp16 = dict(loss_scale=512.)
+fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=1, interval=1)
 # find_unused_parameters=True

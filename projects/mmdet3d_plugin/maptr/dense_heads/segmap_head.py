@@ -255,13 +255,26 @@ class SegMapHead(DETRHead):
                     nn.ReLU(inplace=True),
                     nn.Conv2d(self.embed_dims, self.aux_seg['seg_classes'], kernel_size=1, padding=0)
                 )
-            if self.aux_seg['pv_seg']:            
-                self.pv_seg_head = nn.Sequential(
-                    nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
-                    # nn.BatchNorm2d(128),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(self.embed_dims, self.aux_seg['seg_classes'], kernel_size=1, padding=0)
-                )
+            if self.aux_seg['pv_seg']:
+                if self.aux_seg['feat_down_sample'] == 32:           
+                    self.pv_seg_head = nn.Sequential(
+                        nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
+                        # nn.BatchNorm2d(128),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(self.embed_dims, self.aux_seg['seg_classes'], kernel_size=1, padding=0)
+                    )
+                if self.aux_seg['feat_down_sample'] == 16:  
+                    self.pv_seg_head = nn.Sequential(
+                        nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
+                        nn.ReLU(inplace=True),
+                        # Транспонированная свертка для апсэмплинга
+                        nn.ConvTranspose2d(self.embed_dims, self.embed_dims, kernel_size=4, stride=2, padding=1, output_padding=0),
+                        nn.ReLU(inplace=True),
+                        # Финальная свертка для получения выходных классов
+                        nn.Conv2d(self.embed_dims, self.aux_seg['seg_classes'], kernel_size=1, padding=0)
+                    )
+                else:
+                    ValueError("Не подохящее значение feat_down_sample в конфиге")
         if self.aux_seg['segmap']:
             self.segmap_head = nn.Sequential(
                 nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
@@ -317,6 +330,7 @@ class SegMapHead(DETRHead):
                 head with normalized coordinate format (cx, cy, w, l, cz, h, theta, vx, vy). \
                 Shape [nb_dec, bs, num_query, 9].
         """
+        # import ipdb; ipdb.set_trace()
         if self.training:
             num_vec = self.num_vec
         else:
@@ -324,8 +338,8 @@ class SegMapHead(DETRHead):
             # import ipdb;ipdb.set_trace()
 
 
-        bs, num_cam, _, _, _ = mlvl_feats[0].shape
-        dtype = mlvl_feats[0].dtype
+        bs, num_cam, _, _, _ = mlvl_feats[-1].shape
+        dtype = mlvl_feats[-1].dtype
         # import ipdb;ipdb.set_trace()
         if self.query_embed_type == 'all_pts':
             object_query_embeds = self.query_embedding.weight.to(dtype)
@@ -350,11 +364,12 @@ class SegMapHead(DETRHead):
         """ attention mask to prevent information leakage
         """
         self_attn_mask = (
-            torch.zeros([num_vec, num_vec,]).bool().to(mlvl_feats[0].device)
+            torch.zeros([num_vec, num_vec,]).bool().to(mlvl_feats[-1].device)
         )
         self_attn_mask[self.num_vec_one2one :, 0 : self.num_vec_one2one,] = True
         self_attn_mask[0 : self.num_vec_one2one, self.num_vec_one2one :,] = True
-
+        
+        mlvl_feats = [mlvl_feats[-1]]
         if only_bev:  # only use encoder to obtain BEV features, TODO: refine the workaround
             return self.transformer.get_bev_features(
                 mlvl_feats,
@@ -451,6 +466,7 @@ class SegMapHead(DETRHead):
 
         outputs_seg = None
         outputs_pv_seg = None
+        # import ipdb; ipdb.set_trace()
         if self.aux_seg['use_aux_seg']:
             seg_bev_embed = bev_embed.permute(1,0,2).view(bs,self.bev_h, self.bev_w, -1).permute(0,3,1,2).contiguous()
             if self.aux_seg['bev_seg']:
@@ -458,7 +474,12 @@ class SegMapHead(DETRHead):
             bs, num_cam, embed_dims, feat_h, feat_w = mlvl_feats[-1].shape
             if self.aux_seg['pv_seg']:
                 outputs_pv_seg = self.pv_seg_head(mlvl_feats[-1].flatten(0,1))
-                outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h, feat_w)
+                if self.aux_seg['feat_down_sample'] == 32:
+                    outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h, feat_w)
+                elif self.aux_seg['feat_down_sample'] == 16:
+                    outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*2, feat_w*2)
+                elif self.aux_seg['feat_down_sample'] == 8:
+                    outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*4, feat_w*4)
         if self.aux_seg['segmap']:
             outputs_segmap = self.segmap_head(seg_bev_embed)
 

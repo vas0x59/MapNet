@@ -462,5 +462,5 @@ class CustomPointToMultiViewDepth(object):
         #     im.save('visualize_1/visualize_{}.png'.format(i))
         #################################################################
 
-        results['gt_depth'] = depth_map
+        # results['gt_depth'] = depth_map
         return results

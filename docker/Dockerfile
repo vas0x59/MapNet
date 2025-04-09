@@ -110,6 +110,9 @@ RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build 
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# RUN cd mmdetection3d.git && \
+#     python -m pip install --no-cache-dir -e .
+
 # libraries path
 RUN ln -s /usr/local/cuda/lib64/libcusolver.so.11 /usr/local/cuda/lib64/libcusolver.so.10
 
@@ -119,6 +122,7 @@ RUN ln -s /usr/local/cuda/lib64/libcusolver.so.11 /usr/local/cuda/lib64/libcusol
 # install timm
 RUN python -m pip install timm
 RUN pip install yapf==0.40.1
+RUN pip install wandb ipdb
 
 # RUN cd /home/MapTR && \
 #     pip install -r requirement.txt

@@ -11,7 +11,7 @@ import torch
 import torch.distributed as dist
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import (HOOKS, DistSamplerSeedHook, EpochBasedRunner,
-                         Fp16OptimizerHook, OptimizerHook, build_optimizer,
+                         Fp16OptimizerHook, OptimizerHook, GradientCumulativeFp16OptimizerHook, build_optimizer,
                          build_runner, get_dist_info)
 from mmcv.utils import build_from_cfg
 
@@ -131,7 +131,7 @@ def custom_train_detector(model,
     # fp16 setting
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
-        optimizer_config = Fp16OptimizerHook(
+        optimizer_config = GradientCumulativeFp16OptimizerHook(
             **cfg.optimizer_config, **fp16_cfg, distributed=distributed)
     elif distributed and 'type' not in cfg.optimizer_config:
         optimizer_config = OptimizerHook(**cfg.optimizer_config)

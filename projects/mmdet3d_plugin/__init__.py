@@ -11,4 +11,5 @@ from .models.opt.adamw import AdamW2
 from .bevformer import *
 from .maptr import *
 from .models.backbones.efficientnet import EfficientNet
+from .models.backbones.vit_adapter import ViTAdapter
 from .mapnet import *
