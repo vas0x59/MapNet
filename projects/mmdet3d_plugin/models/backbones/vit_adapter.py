@@ -496,8 +496,8 @@ class TIMMVisionTransformer(BaseModule):
                   layer_scale=layer_scale, with_cp=with_cp,
                   use_residual=True if i in residual_indices else False) for i in range(depth)
         ])
+        self.init_weights(pretrained)
         torch.cuda.empty_cache()
-        # self.init_weights(pretrained)
 
     def init_weights(self, pretrained=None):
         if isinstance(pretrained, str):
@@ -518,7 +518,6 @@ class TIMMVisionTransformer(BaseModule):
         return x
 
     def forward(self, x):
-        import ipdb; ipdb.set_trace()
         x = self.forward_features(x)
         return x
 
@@ -918,7 +917,7 @@ class SpatialPriorModule(nn.Module):
         c2 = self.conv2(c1)
         c3 = self.conv3(c2)
         c4 = self.conv4(c3)
-        # c1 = self.fc1(c1)
+        c1 = self.fc1(c1)
         c2 = self.fc2(c2)
         c3 = self.fc3(c3)
         c4 = self.fc4(c4)
@@ -939,7 +938,6 @@ class ViTAdapter(TIMMVisionTransformer):
 
         super().__init__(num_heads=num_heads, *args, **kwargs)
 
-        # self.num_classes = 80
         self.cls_token = None
         self.num_block = len(self.blocks)
         self.pretrain_size = (pretrain_size, pretrain_size)
@@ -962,13 +960,13 @@ class ViTAdapter(TIMMVisionTransformer):
                              extra_extractor=((True if i == len(interaction_indexes) - 1 else False) and use_extra_extractor))
             for i in range(len(interaction_indexes))
         ])
-        # self.up = nn.ConvTranspose2d(embed_dim, embed_dim, 2, 2)
-        # self.norm1 = nn.SyncBatchNorm(embed_dim)
-        # self.norm2 = nn.SyncBatchNorm(embed_dim)
-        # self.norm3 = nn.SyncBatchNorm(embed_dim)
+        self.up = nn.ConvTranspose2d(embed_dim, embed_dim, 2, 2)
+        self.norm1 = nn.SyncBatchNorm(embed_dim)
+        self.norm2 = nn.SyncBatchNorm(embed_dim)
+        self.norm3 = nn.SyncBatchNorm(embed_dim)
         self.norm4 = nn.SyncBatchNorm(embed_dim)
 
-        # self.up.apply(self._init_weights)
+        self.up.apply(self._init_weights)
         self.spm.apply(self._init_weights)
         self.interactions.apply(self._init_weights)
         self.apply(self._init_deform_weights)
@@ -977,7 +975,6 @@ class ViTAdapter(TIMMVisionTransformer):
             if param.requires_grad:
                     print(f"{name} участвует в обучении")
         
-        torch.cuda.empty_cache()
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -1026,32 +1023,40 @@ class ViTAdapter(TIMMVisionTransformer):
         x = self.pos_drop(x + pos_embed)
 
         # Interaction
+        outs = list()
         for i, layer in enumerate(self.interactions):
             indexes = self.interaction_indexes[i]
             out, c = layer(x, c, self.blocks[indexes[0]:indexes[-1] + 1],
                          deform_inputs1, deform_inputs2, H, W)
+            outs.append(out.transpose(1, 2).view(bs, dim, H, W).contiguous())
 
         # Split & Reshape
         c2 = c[:, 0:c2.size(1), :]
         c3 = c[:, c2.size(1):c2.size(1) + c3.size(1), :]
         c4 = c[:, c2.size(1) + c3.size(1):, :]
+        
 
         c2 = c2.transpose(1, 2).view(bs, dim, H * 2, W * 2).contiguous()
         c3 = c3.transpose(1, 2).view(bs, dim, H, W).contiguous()
         c4 = c4.transpose(1, 2).view(bs, dim, H // 2, W // 2).contiguous()
-        # c1 = self.up(c2) + c1
+        c1 = self.up(c2) + c1
 
         if self.add_vit_feature:
-            x3 = out.transpose(1, 2).view(bs, dim, H, W).contiguous()
-            x1 = F.interpolate(x3, scale_factor=4, mode='bilinear', align_corners=False)
-            x2 = F.interpolate(x3, scale_factor=2, mode='bilinear', align_corners=False)
-            x4 = F.interpolate(x3, scale_factor=0.5, mode='bilinear', align_corners=False)
-            # c1, c2, c3, c4 = c1 + x1, c2 + x2, c3 + x3, 
-            c4 + x4
+            # x3 = out.transpose(1, 2).view(bs, dim, H, W).contiguous()
+            x1, x2, x3, x4 = outs
+            x1 = F.interpolate(x1, scale_factor=4, mode='bilinear', align_corners=False)
+            x2 = F.interpolate(x2, scale_factor=2, mode='bilinear', align_corners=False)
+            x4 = F.interpolate(x4, scale_factor=0.5, mode='bilinear', align_corners=False)
+            # x1 = F.interpolate(x3, scale_factor=4, mode='bilinear', align_corners=False)
+            # x2 = F.interpolate(x3, scale_factor=2, mode='bilinear', align_corners=False)
+            # x4 = F.interpolate(x3, scale_factor=0.5, mode='bilinear', align_corners=False)
+            # c3 = c3 + x3
+            # c4 = c4 + x4
+            c1, c2, c3, c4 = c1 + x1, c2 + x2, c3 + x3, c4 + x4
 
         # Final Norm
-        # f1 = self.norm1(c1)
-        # f2 = self.norm2(c2)
-        # f3 = self.norm3(c3)
+        f1 = self.norm1(c1)
+        f2 = self.norm2(c2)
+        f3 = self.norm3(c3)
         f4 = self.norm4(c4)
-        return [f4] # [f1, f2, f3, f4]
+        return [f1, f2, f3, f4] # [f1, f2, f3, f4]

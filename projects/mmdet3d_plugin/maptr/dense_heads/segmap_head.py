@@ -338,8 +338,8 @@ class SegMapHead(DETRHead):
             # import ipdb;ipdb.set_trace()
 
 
-        bs, num_cam, _, _, _ = mlvl_feats[-1].shape
-        dtype = mlvl_feats[-1].dtype
+        bs, num_cam, _, _, _ = mlvl_feats[0].shape
+        dtype = mlvl_feats[0].dtype
         # import ipdb;ipdb.set_trace()
         if self.query_embed_type == 'all_pts':
             object_query_embeds = self.query_embedding.weight.to(dtype)
@@ -364,12 +364,12 @@ class SegMapHead(DETRHead):
         """ attention mask to prevent information leakage
         """
         self_attn_mask = (
-            torch.zeros([num_vec, num_vec,]).bool().to(mlvl_feats[-1].device)
+            torch.zeros([num_vec, num_vec,]).bool().to(mlvl_feats[0].device)
         )
         self_attn_mask[self.num_vec_one2one :, 0 : self.num_vec_one2one,] = True
         self_attn_mask[0 : self.num_vec_one2one, self.num_vec_one2one :,] = True
         
-        mlvl_feats = [mlvl_feats[-1]]
+        # mlvl_feats = [mlvl_feats[-1]]
         if only_bev:  # only use encoder to obtain BEV features, TODO: refine the workaround
             return self.transformer.get_bev_features(
                 mlvl_feats,
@@ -480,6 +480,7 @@ class SegMapHead(DETRHead):
                     outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*2, feat_w*2)
                 elif self.aux_seg['feat_down_sample'] == 8:
                     outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*4, feat_w*4)
+        outputs_segmap = None
         if self.aux_seg['segmap']:
             outputs_segmap = self.segmap_head(seg_bev_embed)
 
