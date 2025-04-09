@@ -21,8 +21,10 @@ grid_config = {
 }
 
 
+# img_norm_cfg = dict(
+#     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], to_rgb=True)
 
 # For nuScenes we usually do 10-class detection
 class_names = [
@@ -49,7 +51,7 @@ input_modality = dict(
 _dim_ = 256
 _pos_dim_ = _dim_//2
 _ffn_dim_ = _dim_*2
-_num_levels_ = 1
+_num_levels_ = 4
 _num_points_in_pillar_ = 8
 # bev_h_ = 50
 # bev_w_ = 50
@@ -95,11 +97,11 @@ model = dict(
         pretrained=pretrained),
     img_neck=dict(
         type='FPN',
-        in_channels=[384], # , 384, 384, 384]
+        in_channels=[384, 384, 384, 384], # , 384, 384, 384]
         out_channels=_dim_,
         start_level=0,
         add_extra_convs='on_output',
-        num_outs=1,
+        num_outs=_num_levels_,
         norm_cfg=dict(type='MMSyncBN', requires_grad=True)),
     pts_bbox_head=dict(
         type='SegMapHead',
