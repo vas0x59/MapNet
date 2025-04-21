@@ -1203,9 +1203,17 @@ class DINOv2(BaseModule):
 
 __all__ = ["Dinov2Model", "Dinov2PreTrainedModel", "Dinov2Backbone", 'DINOv2']
 # model = Dinov2Backbone.from_pretrained('projects/mmdet3d_plugin/models/backbones/dinov2-base', 
-#                                        out_features=["stage2", "stage5", "stage8", "stage11"],
+#                                        out_features=["stage12"],
 #                                        ignore_mismatched_sizes=True
 #                                        )
+
+# from transformers import AutoImageProcessor, AutoBackbone
+# model = AutoBackbone.from_pretrained("facebook/dinov2-base", out_features=["stage2", "stage5", "stage8", "stage11"])
+# print weights
+# for name, param in model.named_parameters():
+#     if param.requires_grad:
+#         print(name, param.data)
+
 # print(model)
 # x = torch.rand(1, 3, 480, 800)
 # import ipdb; ipdb.set_trace()
