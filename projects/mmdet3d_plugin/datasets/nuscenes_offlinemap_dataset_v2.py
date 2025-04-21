@@ -1208,9 +1208,13 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
         '''
         # import ipdb;ipdb.set_trace()
         # print(f'input_dict:\{input_dict}')
+        if isinstance(self.aux_seg['feat_down_sample'], dict):
+            feat_down_sample = self.aux_seg['feat_down_sample']['value']
+        else:
+            feat_down_sample = self.aux_seg['feat_down_sample']
         
         anns_results = self.vector_map.gen_vectorized_samples(input_dict['annotation'] if 'annotation' in input_dict.keys() else input_dict['ann_info'],
-                     example=example, feat_down_sample=self.aux_seg['feat_down_sample'])
+                     example=example, feat_down_sample=feat_down_sample)
         
         '''
         anns_results, type: dict
@@ -1247,20 +1251,126 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             example['gt_seg_mask'] = DC(to_tensor(anns_results['gt_semantic_mask']), cpu_only=False)
         if anns_results['gt_pv_semantic_mask'] is not None:
             example['gt_pv_seg_mask'] = DC(to_tensor(anns_results['gt_pv_semantic_mask']), cpu_only=False)
-        # import ipdb;ipdb.set_trace()
-        if input_dict['segmap'] is not None:
-            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[1]
-            segmap = np.expand_dims(segmap, axis=0)
             
+            ###############################################################
             # import matplotlib.pyplot as plt
-            # plt.imshow(segmap, cmap='gray')  # Используем серую цветовую палитру для изображения
+            # fig, axes = plt.subplots(1, 6, figsize=(15, 5))
+            # for cam in range(6):
+            #     axes[cam].imshow(anns_results['gt_pv_semantic_mask'][cam, 0], cmap='gray')
+            #     axes[cam].set_title(f'Cam {cam}')
+            #     axes[cam].axis('off')
+
+            # plt.suptitle('PV Masks for All Cameras')
+            # plt.show()
+            ###############################################################
+        if input_dict['segmap'] is not None:
+            if self.aux_seg['segmap_classes'] == 3:
+                segmap = np.transpose(input_dict['segmap'], (2, 0, 1)) #[1]
+            else:
+                segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[1]
+            segmap = np.expand_dims(segmap, axis=0)
+            # anns_results = self.bev_to_mask(segmap, example=example, feat_down_sample=self.aux_seg['feat_down_sample'])
+            
+            ###############################################################
+            # import matplotlib.pyplot as plt
+            # plt.imshow(np.transpose(segmap, (1, 2, 0)), cmap='gray')  # Используем серую цветовую палитру для изображения
             # plt.title("Second Channel of Segmap")
             # plt.axis('off')  # Отключаем оси для чистоты отображения
             # plt.show()
+            
+            # import matplotlib.pyplot as plt
+
+            # plt.imshow(gt_semantic_mask[0], cmap='gray')
+            # plt.title('BEV Mask')
+            # plt.axis('off')
+            # plt.show()
+
+            # fig, axes = plt.subplots(1, 6, figsize=(15, 5))
+
+            # for cam in range(6):
+            #     axes[cam].imshow(anns_results['gt_pv_segmap'][cam, 0], cmap='gray')
+            #     axes[cam].set_title(f'Cam {cam}')
+            #     axes[cam].axis('off')
+
+            # plt.suptitle('PV Masks for All Cameras')
+            # import ipdb;ipdb.set_trace()
+            
+            # plt.show()
+            # ###############################################################
             example['gt_segmap'] = DC(to_tensor(segmap), cpu_only=False)
+            # example['gt_pv_segmap'] = DC(to_tensor(anns_results['gt_pv_segmap']), cpu_only=False)
          
         return example
 
+    def bev_mask_to_pvmask(self,
+                       bev_mask,
+                       mask,
+                       lidar2feat,
+                       z=-1.6,
+                       color=1):
+        # Бинаризация маски
+        bev_mask = (bev_mask > 0).astype(np.uint8)
+
+        contours, _ = cv2.findContours(bev_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            contour = contour.squeeze(1)  # (N, 2), убираем лишнюю ось
+            print(f"Contour shape: {contour.shape}")
+            
+            num_pts = contour.shape[0]
+            
+            # Создаем гомогенные координаты (x, y, z = 0, 1) для преобразования в 3D
+            pts_h = np.concatenate([contour, np.zeros((num_pts, 1)), np.ones((num_pts, 1))], axis=1)  # (N, 4)
+            pts_h = pts_h.T  # (4, N)
+            
+            # Поскольку BEV уже в координатах LIDAR, пропускаем шаг преобразования BEV → LIDAR
+            lidar_coords = pts_h  # (4, N) — это уже координаты в пространстве LIDAR
+            print(f"LIDAR coordinates: {lidar_coords}")
+
+            # Устанавливаем фиксированную Z-координату (например, -1.6, как указано)
+            lidar_coords[2, :] = z  # Обновляем Z для всех точек
+
+            # LIDAR → Perspective View
+            # Предполагается, что lidar2feat - это матрица преобразования LIDAR → пиксели
+            pix_coords = lidar2feat @ lidar_coords  # (3, N) — получаем гомогенные пиксельные координаты
+            pix_coords /= pix_coords[2, :]  # Нормализуем, чтобы получить 2D координаты (x, y)
+
+            # Преобразуем в нужный формат для OpenCV
+            pix_coords = np.int32(pix_coords[:2, :].T).reshape(-1, 1, 2)  # (N, 1, 2)
+            print(f"Pixel coordinates: {pix_coords}")
+            
+            # Проверим, есть ли больше двух точек для полигона
+            if len(pix_coords) > 2:
+                cv2.fillPoly(mask, [pix_coords], color=color)
+
+
+
+
+    
+    def bev_to_mask(self, bev_mask, example=None, feat_down_sample=32):
+        # gen_vectorized_samples
+        
+        bev = bev_mask[0]                      # shape: (200, 100)
+        bev = (bev > 0).astype(np.uint8) 
+        
+        num_cam  = len(example['img_metas'].data['pad_shape'])
+        img_shape = example['img_metas'].data['pad_shape'][0]
+        # import ipdb;ipdb.set_trace()
+        gt_pv_segmap = np.zeros((num_cam, 1, img_shape[0] // feat_down_sample, img_shape[1] // feat_down_sample), dtype=np.uint8)
+        lidar2img = example['img_metas'].data['lidar2img']
+        scale_factor = np.eye(4)
+        scale_factor[0, 0] *= 1/32
+        scale_factor[1, 1] *= 1/32
+        lidar2feat = [scale_factor @ l2i for l2i in lidar2img]
+        
+        for cam_index in range(num_cam):
+            self.bev_mask_to_pvmask(bev, gt_pv_segmap[cam_index][0], lidar2feat[cam_index], color=1)
+            
+        anns_results = dict(
+            gt_pv_segmap=gt_pv_segmap,
+        )
+        return anns_results
+    
     def prepare_train_data(self, index):
         """
         Training data preparation.

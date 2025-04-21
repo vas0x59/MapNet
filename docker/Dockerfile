@@ -123,6 +123,7 @@ RUN ln -s /usr/local/cuda/lib64/libcusolver.so.11 /usr/local/cuda/lib64/libcusol
 RUN python -m pip install timm
 RUN pip install yapf==0.40.1
 RUN pip install wandb ipdb
+RUN pip install transformers==4.38.0
 
 # RUN cd /home/MapTR && \
 #     pip install -r requirement.txt
