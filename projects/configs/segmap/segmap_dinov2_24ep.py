@@ -378,17 +378,17 @@ log_config = dict(
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
-        # dict(
-        #     type='WandbLoggerHook',
-        #     init_kwargs=dict(
-        #         project='mapnet_test_with_bsz2',   # Название проекта в WandB
-        #         name='4 bsz + dinov2-base 13 frz',     # Имя эксперимента
-        #         config=dict(                # Дополнительные настройки эксперимента
-        #             batch_size=samples_per_gpu,
-        #             model='mapqr',
-        #         )
-        #     )
-        # )
+        dict(
+            type='WandbLoggerHook',
+            init_kwargs=dict(
+                project='mapnet_test_with_bsz2',   # Название проекта в WandB
+                name='4 bsz + dinov2-base 13 frz',     # Имя эксперимента
+                config=dict(                # Дополнительные настройки эксперимента
+                    batch_size=samples_per_gpu,
+                    model='mapqr',
+                )
+            )
+        )
     ])
 fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=3, interval=1)
