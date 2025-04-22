@@ -411,3 +411,49 @@ class CustomPointsRangeFilter:
         clean_points = points[points_mask]
         data["points"] = clean_points
         return data
+
+
+@PIPELINES.register_module()
+class ResizeMultiViewImage(object):
+    """Resize multi-view images to a fixed size.
+
+    Args:
+        img_scale (tuple): Desired image size as (width, height).
+        keep_ratio (bool): Whether to keep aspect ratio. Default: False.
+    """
+
+    def __init__(self, img_scale=(800, 448), keep_ratio=False):
+        self.img_scale = img_scale  # (w, h)
+        self.keep_ratio = keep_ratio
+
+    def __call__(self, results):
+        target_w, target_h = self.img_scale
+        resized_imgs = []
+        lidar2img = []
+        img_aug_matrix = []
+
+        for img, l2i in zip(results['img'], results['lidar2img']):
+            h, w = img.shape[:2]
+            if self.keep_ratio:
+                img, scale_factor = mmcv.imrescale(img, (target_w, target_h), return_scale=True)
+                sf_x = sf_y = scale_factor
+            else:
+                img = mmcv.imresize(img, (target_w, target_h))
+                sf_x = target_w / w
+                sf_y = target_h / h
+
+            # Apply scaling to lidar2img
+            scale_matrix = np.eye(4)
+            scale_matrix[0, 0] *= sf_x
+            scale_matrix[1, 1] *= sf_y
+
+            resized_imgs.append(img)
+            lidar2img.append(scale_matrix @ l2i)
+            img_aug_matrix.append(scale_matrix)
+
+        results['img'] = resized_imgs
+        results['lidar2img'] = lidar2img
+        results['img_aug_matrix'] = img_aug_matrix
+        results['img_shape'] = [img.shape for img in resized_imgs]
+        results['ori_shape'] = [img.shape for img in resized_imgs]
+        return results
