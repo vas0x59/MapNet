@@ -57,8 +57,8 @@ bev_h_ = 200
 bev_w_ = 100
 queue_length = 1 # each sequence contains `queue_length` frames.
 
-img_backbone_type = 'DINOv2'
-
+img_backbone_type = 'DINOv2_LoRA'
+size_divisor = 14
 aux_seg_cfg = dict(
     use_aux_seg=True,
     bev_seg=True,
@@ -67,7 +67,7 @@ aux_seg_cfg = dict(
     seg_classes=1,
     segmap_classes=3, # layers=['ped_crossing', 'drivable_area', 'road_segment']
     feat_down_sample=dict(
-                        value=16,
+                        value=size_divisor,
                         img_backone=img_backbone_type,
     ),
     pv_thickness=1,
@@ -85,6 +85,12 @@ model = dict(
         ignore_mismatched_sizes=True,
         output_hidden_states=True,
         frozen_stages=13, # 10 -> 9 freeze
+        r=16, 
+        lora_k=False,
+        lora_q=True,
+        lora_v=True,
+        use_layer_norm=False,
+        lora_layer_ids=[10, 11], 
     ),
     img_neck=dict(
         type='FPN',
@@ -239,7 +245,8 @@ file_client_args = dict(backend='disk')
 
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    # dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    dict(type='ResizeMultiViewImage', img_scale=(784, 448), keep_ratio=False),
     dict(type='PhotoMetricDistortionMultiViewImage'),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     # dict(
@@ -250,7 +257,7 @@ train_pipeline = [
     #     reduce_beams=32),
     # dict(type='CustomPointToMultiViewDepth', downsample=1, grid_config=grid_config),
     # dict(type='PadMultiViewImageDepth', size_divisor=32), 
-    dict(type='PadMultiViewImage', size_divisor=16), 
+    dict(type='PadMultiViewImage', size_divisor=size_divisor), 
     dict(type='DefaultFormatBundle3D', with_gt=False, with_label=False,class_names=map_classes),
     dict(type='CustomCollect3D', keys=['img' ]) # , 'gt_depth'
 ]
@@ -266,7 +273,7 @@ test_pipeline = [
         pts_scale_ratio=1,
         flip=False,
         transforms=[
-            dict(type='PadMultiViewImage', size_divisor=32),
+            dict(type='PadMultiViewImage', size_divisor=size_divisor),
             dict(
                 type='DefaultFormatBundle3D', 
                 with_gt=False, 

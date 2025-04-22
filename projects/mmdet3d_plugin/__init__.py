@@ -12,6 +12,6 @@ from .bevformer import *
 from .maptr import *
 from .models.backbones.efficientnet import EfficientNet
 from .models.backbones.vit_adapter import ViTAdapter
-from .models.backbones.dinov2_hf import DINOv2
-from .models.backbones.lora_dinov2 import LoRA_Dinov2
+from .models.backbones.dinov2_hf import DINOv2, DINOv2_LoRA
+# from .models.backbones.lora_dinov2 import DINOv2_LoRA
 from .mapnet import *

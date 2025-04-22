@@ -683,8 +683,8 @@ class VectorizedLocalMap(object):
                     gt_pv_semantic_mask = np.zeros((num_cam, 1, img_shape[0] // feat_down_sample, img_shape[1] // feat_down_sample), dtype=np.uint8)
                     lidar2img = example['img_metas'].data['lidar2img']
                     scale_factor = np.eye(4)
-                    scale_factor[0, 0] *= 1/32
-                    scale_factor[1, 1] *= 1/32
+                    scale_factor[0, 0] *= 1/feat_down_sample
+                    scale_factor[1, 1] *= 1/feat_down_sample
                     lidar2feat = [scale_factor @ l2i for l2i in lidar2img]
                 else:
                     gt_pv_semantic_mask = None
@@ -710,8 +710,8 @@ class VectorizedLocalMap(object):
                     gt_pv_semantic_mask = np.zeros((num_cam, len(self.vec_classes), img_shape[0] // feat_down_sample, img_shape[1] // feat_down_sample), dtype=np.uint8)
                     lidar2img = example['img_metas'].data['lidar2img']
                     scale_factor = np.eye(4)
-                    scale_factor[0, 0] *= 1/32
-                    scale_factor[1, 1] *= 1/32
+                    scale_factor[0, 0] *= 1/feat_down_sample
+                    scale_factor[1, 1] *= 1/feat_down_sample
                     lidar2feat = [scale_factor @ l2i for l2i in lidar2img]
                 else:
                     gt_pv_semantic_mask = None

@@ -57,6 +57,7 @@ bev_h_ = 200
 bev_w_ = 100
 queue_length = 1 # each sequence contains `queue_length` frames.
 
+size_divisor = 14
 img_backbone_type = 'DINOv2'
 
 aux_seg_cfg = dict(
@@ -67,7 +68,7 @@ aux_seg_cfg = dict(
     seg_classes=1,
     segmap_classes=3, # layers=['ped_crossing', 'drivable_area', 'road_segment']
     feat_down_sample=dict(
-                        value=16,
+                        value=size_divisor,
                         img_backone=img_backbone_type,
     ),
     pv_thickness=1,
@@ -239,8 +240,9 @@ file_client_args = dict(backend='disk')
 
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
-    # dict(type='PhotoMetricDistortionMultiViewImage'),
+    # dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    dict(type='ResizeMultiViewImage', img_scale=(784, 448), keep_ratio=False),
+    dict(type='PhotoMetricDistortionMultiViewImage'),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     # dict(
     #     type='CustomLoadPointsFromFile', # LoadPointsFromFile
@@ -250,14 +252,15 @@ train_pipeline = [
     #     reduce_beams=32),
     # dict(type='CustomPointToMultiViewDepth', downsample=1, grid_config=grid_config),
     # dict(type='PadMultiViewImageDepth', size_divisor=32), 
-    dict(type='PadMultiViewImage', size_divisor=32), 
+    dict(type='PadMultiViewImage', size_divisor=size_divisor), 
     dict(type='DefaultFormatBundle3D', with_gt=False, with_label=False,class_names=map_classes),
     dict(type='CustomCollect3D', keys=['img' ]) # , 'gt_depth'
 ]
 
 test_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    # dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    dict(type='ResizeMultiViewImage', img_scale=(784, 448), keep_ratio=False),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
    
     dict(
@@ -266,7 +269,7 @@ test_pipeline = [
         pts_scale_ratio=1,
         flip=False,
         transforms=[
-            dict(type='PadMultiViewImage', size_divisor=32),
+            dict(type='PadMultiViewImage', size_divisor=size_divisor),
             dict(
                 type='DefaultFormatBundle3D', 
                 with_gt=False, 
@@ -275,10 +278,10 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=4
+samples_per_gpu=1
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=4, # TODO 12
+    workers_per_gpu=0, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -375,17 +378,17 @@ log_config = dict(
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
-        dict(
-            type='WandbLoggerHook',
-            init_kwargs=dict(
-                project='mapnet_test_with_bsz2',   # Название проекта в WandB
-                name='4 bsz + dinov2-base 13 frz',     # Имя эксперимента
-                config=dict(                # Дополнительные настройки эксперимента
-                    batch_size=samples_per_gpu,
-                    model='mapqr',
-                )
-            )
-        )
+        # dict(
+        #     type='WandbLoggerHook',
+        #     init_kwargs=dict(
+        #         project='mapnet_test_with_bsz2',   # Название проекта в WandB
+        #         name='4 bsz + dinov2-base 13 frz',     # Имя эксперимента
+        #         config=dict(                # Дополнительные настройки эксперимента
+        #             batch_size=samples_per_gpu,
+        #             model='mapqr',
+        #         )
+        #     )
+        # )
     ])
 fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=3, interval=1)
