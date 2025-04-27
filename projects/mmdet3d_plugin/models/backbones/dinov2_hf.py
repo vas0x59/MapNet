@@ -1532,10 +1532,10 @@ class DINOv2_LoRA(BaseModule):
                     param.requires_grad = False
 
 __all__ = ["Dinov2Model", "Dinov2PreTrainedModel", "Dinov2Backbone", 'DINOv2', 'DINOv2_LoRA']
-model = Dinov2Backbone.from_pretrained('projects/mmdet3d_plugin/models/backbones/dinov2-base', 
-                                       out_features=["stage12"],
-                                       ignore_mismatched_sizes=True
-                                       )
+# model = Dinov2Backbone.from_pretrained('projects/mmdet3d_plugin/models/backbones/dinov2-base', 
+#                                        out_features=["stage12"],
+#                                        ignore_mismatched_sizes=True
+#                                        )
 
 # from transformers import AutoImageProcessor, AutoBackbone
 # model = AutoBackbone.from_pretrained("facebook/dinov2-base", out_features=["stage2", "stage5", "stage8", "stage11"])
@@ -1545,7 +1545,7 @@ model = Dinov2Backbone.from_pretrained('projects/mmdet3d_plugin/models/backbones
 #         print(name, param.data)
 
 # model = DINOv2_LoRA('projects/mmdet3d_plugin/models/backbones/dinov2-base')
-print(model)
+# print(model)
 # print("\nTrainable parameters:")
 # total_params = 0
 # trainable_params = 0
