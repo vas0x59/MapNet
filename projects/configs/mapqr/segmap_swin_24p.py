@@ -72,19 +72,25 @@ model = dict(
     type='MapTRv2',
     use_grid_mask=True,
     video_test_mode=False,
-    pretrained=dict(img='ckpts/resnet50-19c8e357.pth'),
     img_backbone=dict(
-        type='ResNet',
-        depth=50,
-        num_stages=4,
+        type='SwinTransformer',
+        pretrain_img_size=224,
+        in_channels=3,
+        embed_dims=96,
+        patch_size=4,
+        window_size=7,
+        mlp_ratio=4,
+        depths=(2, 2, 6, 2),
+        num_heads=(3, 6, 12, 24),
+        strides=(4, 2, 2, 2),
         out_indices=(3,),
-        frozen_stages=1,
-        norm_cfg=dict(type='BN', requires_grad=False),
-        norm_eval=True,
-        style='pytorch'),
+        frozen_stages=5, # 5 - all stages
+        pretrained='ckpts/swin_tiny_patch4_window7_224.pth',
+        with_cp=False,
+    ),
     img_neck=dict(
         type='FPN',
-        in_channels=[2048],
+        in_channels=[768,],
         out_channels=_dim_,
         start_level=0,
         add_extra_convs='on_output',
@@ -271,7 +277,7 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=1
+samples_per_gpu=4
 data = dict(
     samples_per_gpu=samples_per_gpu,
     workers_per_gpu=4, # TODO 12
@@ -327,12 +333,12 @@ data = dict(
 
 optimizer = dict(
     type='AdamW',
-    lr=6e-4,
+    lr=4e-4,
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.1),
         }),
-    weight_decay=0.01)
+    weight_decay=0.03)
 
 # optimizer = dict(
 #     type='AdamW',
@@ -344,12 +350,12 @@ optimizer = dict(
 #     weight_decay=0.01)
 
 # optimizer_config = dict(grad_clip=dict(max_norm=15, norm_type=2))
-optimizer_config = dict(cumulative_iters=32, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
+optimizer_config = dict(cumulative_iters=8, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
 # learning policy
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=17600, # 8800
+    warmup_iters=4400,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
 # lr_config = dict(
@@ -375,14 +381,14 @@ log_config = dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
                 project='mapnet_test_with_bsz2',   # Название проекта в WandB
-                name='1 bsz + r50',     # Имя эксперимента
+                name='segmap + swint (freez=all) + bsz4',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
-                    batch_size=samples_per_gpu*2,
+                    batch_size=samples_per_gpu,
                     model='mapqr',
                 )
             )
         )
     ])
 fp16 = dict(loss_scale=512.)
-checkpoint_config = dict(max_keep_ckpts=3, interval=1)
-# find_unused_parameters=True
+checkpoint_config = dict(max_keep_ckpts=5, interval=1)
+find_unused_parameters=True
