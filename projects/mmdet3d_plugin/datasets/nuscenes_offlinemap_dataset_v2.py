@@ -1265,7 +1265,9 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             ###############################################################
         if input_dict['segmap'] is not None:
             if self.aux_seg['segmap_classes'] == 3:
-                segmap = np.transpose(input_dict['segmap'], (2, 0, 1)) #[1]
+                segmap = np.transpose(input_dict['segmap'], (2, 0, 1))
+            elif self.aux_seg['segmap_classes'] == 2:
+                segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[:2]
             else:
                 segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[1]
             segmap = np.expand_dims(segmap, axis=0)
