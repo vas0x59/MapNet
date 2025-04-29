@@ -378,8 +378,8 @@ def get_view_matrix(h=200, w=200, h_meters=100.0, w_meters=100.0, offset=0.0):
         sw = w / w_meters
 
         return np.float32([
-            [ 0., -sw,          w/2.],
-            [-sh,  0., h*offset+h/2.],
+            [ sw,  0.,          w/2.],
+            [ 0.,  sw, h*offset+h/2.],
             [ 0.,  0.,            1.]
         ])
 
@@ -395,7 +395,7 @@ def get_static_layers(nusc_map,
     
     h, w = canvas_size
     V = get_view_matrix(**bev)
-    M_inv = np.array(sample['pose_inverse'])
+    
     S = np.array([
         [1, 0, 0, 0],
         [0, 1, 0, 0],
@@ -412,44 +412,65 @@ def get_static_layers(nusc_map,
     ego2global[:3, 3] = sample['ego2global_translation']
     lidar2global = ego2global @ lidar2ego
     lidar2global_translation = list(lidar2global[:3,3])
+    T_lg = np.linalg.inv(lidar2global)
+
     map_pose = lidar2global_translation[:2]
     
     patch_w = point_cloud_range[3] - point_cloud_range[0]
     patch_h = point_cloud_range[4] - point_cloud_range[1]
-    patch_size = (patch_h, patch_w)
-    patch_box = (map_pose[0], map_pose[1], patch_size[0], patch_size[1])
-    records_in_patch = nusc_map[location].get_records_in_patch(patch_box, layers, 'intersect')
+    # patch_size = (patch_h, patch_w)
+    # patch_box = (map_pose[0], map_pose[1], patch_size[0], patch_size[1])
+    records_in_patch = nusc_map[location].get_records_in_radius(map_pose[0], map_pose[1], max(patch_h, patch_w)*2, layers, 'intersect')
 
     result = list()
 
+    M = V @ S @ T_lg
     for layer in layers:
         render = np.zeros((h, w), dtype=np.uint8)
 
         for r in records_in_patch[layer]:
             polygon_token = nusc_map[location].get(layer, r)
+            
+            # if layer
 
-            if layer == 'drivable_area': polygon_tokens = polygon_token['polygon_tokens']
-            else: polygon_tokens = [polygon_token['polygon_token']]
+            # if layer == 'drivable_area': polygon_tokens = polygon_token['polygon_tokens']
+            # else: polygon_tokens = [polygon_token['polygon_token']]
 
-            for p in polygon_tokens:
-                polygon = nusc_map[location].extract_polygon(p)
-                polygon = MultiPolygon([polygon])
+            # for p in polygon_tokens:
+            if "polygon_token" in polygon_token.keys():
+                polygon = nusc_map[location].extract_polygon(polygon_token["polygon_token"])
+                multipolygon = MultiPolygon([polygon])
+            else:
+                multipolygon =  MultiPolygon([nusc_map[location].extract_polygon(p) for p in polygon_token["polygon_tokens"]])
+            for polygon in multipolygon.geoms:
+                exterior = np.array(polygon.exterior.coords)
+                exterior =  exterior @ M[:2, :2].T + M[:2, 3]
+                # cv2.polylines(image, [exterior], isClosed=True, color=(0, 0, 255), thickness=2)
+                cv2.fillPoly(render, [exterior.astype(np.int32)], color=1)  # Optional: Fill the polygon
 
-                exteriors = [np.array(poly.exterior.coords).T for poly in polygon.geoms]
-                exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in exteriors]
-                exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in exteriors]
-                exteriors = [V @ S @ M_inv @ p for p in exteriors]
-                exteriors = [p[:2].round().astype(np.int32).T for p in exteriors]
+                # Optionally, draw holes if there are interiors
+                for interior in polygon.interiors:
+                    hole = np.array(interior.coords)
+                    hole = hole @ M[:2, :2].T + M[:2, 3]
+                    # cv2.polylines(render, [hole], isClosed=True, color=0, thickness=2)
+                    cv2.fillPoly(render, [hole.astype(np.int32)], color=0)  # Fill holes with background
 
-                cv2.fillPoly(render, exteriors, 1, INTERPOLATION)
 
-                interiors = [np.array(pi.coords).T for poly in polygon.geoms for pi in poly.interiors]
-                interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in interiors]
-                interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in interiors]
-                interiors = [V @ S @ M_inv @ p for p in interiors]
-                interiors = [p[:2].round().astype(np.int32).T for p in interiors]
+            # exteriors = [np.array(poly.exterior.coords).T for poly in polygon.geoms]
+            # exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in exteriors]
+            # exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in exteriors]
+            # exteriors = [V @ S @ T_lg @ p for p in exteriors]
+            # exteriors = [p[:2].round().astype(np.int32).T for p in exteriors]
 
-                cv2.fillPoly(render, interiors, 0, INTERPOLATION)
+            # cv2.fillPoly(render, exteriors, 1, INTERPOLATION)
+
+            # interiors = [np.array(pi.coords).T for poly in polygon.geoms for pi in poly.interiors]
+            # interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in interiors]
+            # interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in interiors]
+            # interiors = [V @ S @ lidar2global @ p for p in interiors]
+            # interiors = [p[:2].round().astype(np.int32).T for p in interiors]
+
+            # cv2.fillPoly(render, interiors, 0, INTERPOLATION)
 
         result.append(render)
 
