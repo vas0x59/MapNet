@@ -116,6 +116,8 @@ class SegMapHead(DETRHead):
                     seg_classes=1,
                     segmap_classes=3,
                     feat_down_sample=32,
+                    lidar_bev_maps=True,
+                    lidar_bev_maps_count=2
                  ),
                  z_cfg = dict(
                     pred_z_flag=False,
@@ -134,6 +136,10 @@ class SegMapHead(DETRHead):
                  loss_segmap=dict(type='SimpleLoss',
                             pos_weight=1.0,
                             loss_weight=2.0),
+                 loss_lidar_bev_maps=dict( 
+                    type="SmoothL1Loss",
+                    loss_weight=1.0
+                 ),
                  **kwargs):
 
         self.bev_h = bev_h
@@ -199,6 +205,7 @@ class SegMapHead(DETRHead):
         self.loss_seg = build_loss(loss_seg)
         self.loss_pv_seg = build_loss(loss_pv_seg)
         self.loss_segmap = build_loss(loss_segmap)
+        self.loss_lidar_bev_maps = build_loss(loss_lidar_bev_maps)
         
         self._init_layers()
 
@@ -289,6 +296,12 @@ class SegMapHead(DETRHead):
                 # nn.BatchNorm2d(128),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(self.embed_dims, self.aux_seg['segmap_classes'], kernel_size=1, padding=0)
+            )
+        if self.aux_seg["lidar_bev_maps"]:
+            self.lidar_bev_maps_head = nn.Sequential(
+                nn.Conv2d(self.embed_dims, self.embed_dims, kernel_size=3, padding=1, bias=False),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(self.embed_dims, self.aux_seg['lidar_bev_maps_count'], kernel_size=1, padding=0)
             )
 
         if not self.as_two_stage:
@@ -473,9 +486,11 @@ class SegMapHead(DETRHead):
 
         outputs_seg = None
         outputs_pv_seg = None
+        outputs_segmap = None
+        output_lidar_bev_maps = None
         # import ipdb; ipdb.set_trace()
+        seg_bev_embed = bev_embed.permute(1,0,2).view(bs,self.bev_h, self.bev_w, -1).permute(0,3,1,2).contiguous()
         if self.aux_seg['use_aux_seg']:
-            seg_bev_embed = bev_embed.permute(1,0,2).view(bs,self.bev_h, self.bev_w, -1).permute(0,3,1,2).contiguous()
             if self.aux_seg['bev_seg']:
                 outputs_seg = self.seg_head(seg_bev_embed)
             bs, num_cam, embed_dims, feat_h, feat_w = mlvl_feats[-1].shape
@@ -491,9 +506,13 @@ class SegMapHead(DETRHead):
                         outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*2, feat_w*2)
                     elif self.aux_seg['feat_down_sample'] == 8:
                         outputs_pv_seg = outputs_pv_seg.view(bs, num_cam, -1, feat_h*4, feat_w*4)
-        outputs_segmap = None
+            
         if self.aux_seg['segmap']:
             outputs_segmap = self.segmap_head(seg_bev_embed)
+        
+        
+        if self.aux_seg["lidar_bev_maps"]:
+            output_lidar_bev_maps = self.lidar_bev_maps_head(seg_bev_embed)
 
         outs = {
             'bev_embed': bev_embed,
@@ -507,6 +526,7 @@ class SegMapHead(DETRHead):
             'seg': outputs_seg,
             'pv_seg': outputs_pv_seg,
             'segmap': outputs_segmap,
+            "lidar_bev_maps" : output_lidar_bev_maps,
             "one2many_outs": dict(
                 all_cls_scores=outputs_classes_one2many,
                 all_bbox_preds=outputs_coords_one2many,
@@ -517,6 +537,7 @@ class SegMapHead(DETRHead):
                 seg=None,
                 pv_seg=None,
                 segmap=None,
+                lidar_bev_maps=None
             )
         }
 
@@ -827,6 +848,7 @@ class SegMapHead(DETRHead):
              gt_pv_seg_mask,
              preds_dicts,
              gt_segmap,
+             gt_lidar_bev_maps,
              gt_bboxes_ignore=None,
              img_metas=None):
         """"Loss function.
@@ -938,6 +960,14 @@ class SegMapHead(DETRHead):
                 segmap_gt = torch.stack([gt_segmap[i] for i in range(num_imgs)],dim=0) / 255.0
                 loss_segmap = self.loss_segmap(segmap_output, segmap_gt.float()) 
                 loss_dict['loss_segmap'] = loss_segmap
+        if self.aux_seg['lidar_bev_maps']:
+            if preds_dicts['lidar_bev_maps'] is not None:
+                lidar_bev_maps_output = preds_dicts['lidar_bev_maps']
+                num_imgs = lidar_bev_maps_output.size(0)
+                lidar_bev_maps_gt = torch.stack([gt_lidar_bev_maps[i] for i in range(num_imgs)],dim=0)
+                # import ipdb; ipdb.set_trace()
+                loss_lidar_bev_maps = self.loss_lidar_bev_maps(lidar_bev_maps_output, lidar_bev_maps_gt ) 
+                loss_dict['loss_lidar_bev_maps'] = loss_lidar_bev_maps    
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:
             binary_labels_list = [

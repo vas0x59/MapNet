@@ -592,67 +592,67 @@ class VectorizedLocalMap(object):
             [ 0.,  0.,            1.]
         ])
     
-    def get_static_layers(self, sample, 
-                          location,
-                          layers=['ped_crossing', 'drivable_area', 'road_segment']
-                          ):
-        h, w = self.canvas_size[0], self.canvas_size[1]
-        V = self.view
-        M_inv = np.array(sample['pose_inverse'])
-        S = np.array([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 0, 1],
-        ])
-        # print(sample)
+    # def get_static_layers(self, sample, 
+    #                       location,
+    #                       layers=['ped_crossing', 'drivable_area', 'road_segment']
+    #                       ):
+    #     h, w = self.canvas_size[0], self.canvas_size[1]
+    #     V = self.view
+    #     M_inv = np.array(sample['pose_inverse'])
+    #     S = np.array([
+    #         [1, 0, 0, 0],
+    #         [0, 1, 0, 0],
+    #         [0, 0, 0, 1],
+    #     ])
+    #     # print(sample)
         
         
-        lidar2ego = np.eye(4)
-        lidar2ego[:3,:3] = Quaternion(sample['lidar2ego_rotation']).rotation_matrix
-        lidar2ego[:3, 3] = sample['lidar2ego_translation']
-        ego2global = np.eye(4)
-        ego2global[:3,:3] = Quaternion(sample['ego2global_rotation']).rotation_matrix
-        ego2global[:3, 3] = sample['ego2global_translation']
-        lidar2global = ego2global @ lidar2ego
-        lidar2global_translation = list(lidar2global[:3,3])
-        map_pose = lidar2global_translation[:2]
-        patch_box = (map_pose[0], map_pose[1], self.patch_size[0], self.patch_size[1])
-        records_in_patch = self.nusc_map[location].get_records_in_patch(patch_box, layers, 'intersect')
+    #     lidar2ego = np.eye(4)
+    #     lidar2ego[:3,:3] = Quaternion(sample['lidar2ego_rotation']).rotation_matrix
+    #     lidar2ego[:3, 3] = sample['lidar2ego_translation']
+    #     ego2global = np.eye(4)
+    #     ego2global[:3,:3] = Quaternion(sample['ego2global_rotation']).rotation_matrix
+    #     ego2global[:3, 3] = sample['ego2global_translation']
+    #     lidar2global = ego2global @ lidar2ego
+    #     lidar2global_translation = list(lidar2global[:3,3])
+    #     map_pose = lidar2global_translation[:2]
+    #     patch_box = (map_pose[0], map_pose[1], self.patch_size[0], self.patch_size[1])
+    #     records_in_patch = self.nusc_map[location].get_records_in_patch(patch_box, layers, 'intersect')
 
-        result = list()
+    #     result = list()
 
-        for layer in layers:
-            render = np.zeros((h, w), dtype=np.uint8)
+    #     for layer in layers:
+    #         render = np.zeros((h, w), dtype=np.uint8)
 
-            for r in records_in_patch[layer]:
-                polygon_token = self.nusc_map[location].get(layer, r)
+    #         for r in records_in_patch[layer]:
+    #             polygon_token = self.nusc_map[location].get(layer, r)
 
-                if layer == 'drivable_area': polygon_tokens = polygon_token['polygon_tokens']
-                else: polygon_tokens = [polygon_token['polygon_token']]
+    #             if layer == 'drivable_area': polygon_tokens = polygon_token['polygon_tokens']
+    #             else: polygon_tokens = [polygon_token['polygon_token']]
 
-                for p in polygon_tokens:
-                    polygon = self.nusc_map[location].extract_polygon(p)
-                    polygon = MultiPolygon([polygon])
+    #             for p in polygon_tokens:
+    #                 polygon = self.nusc_map[location].extract_polygon(p)
+    #                 polygon = MultiPolygon([polygon])
 
-                    exteriors = [np.array(poly.exterior.coords).T for poly in polygon.geoms]
-                    exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in exteriors]
-                    exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in exteriors]
-                    exteriors = [V @ S @ M_inv @ p for p in exteriors]
-                    exteriors = [p[:2].round().astype(np.int32).T for p in exteriors]
+    #                 exteriors = [np.array(poly.exterior.coords).T for poly in polygon.geoms]
+    #                 exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in exteriors]
+    #                 exteriors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in exteriors]
+    #                 exteriors = [V @ S @ M_inv @ p for p in exteriors]
+    #                 exteriors = [p[:2].round().astype(np.int32).T for p in exteriors]
 
-                    cv2.fillPoly(render, exteriors, 1, INTERPOLATION)
+    #                 cv2.fillPoly(render, exteriors, 1, INTERPOLATION)
 
-                    interiors = [np.array(pi.coords).T for poly in polygon.geoms for pi in poly.interiors]
-                    interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in interiors]
-                    interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in interiors]
-                    interiors = [V @ S @ M_inv @ p for p in interiors]
-                    interiors = [p[:2].round().astype(np.int32).T for p in interiors]
+    #                 interiors = [np.array(pi.coords).T for poly in polygon.geoms for pi in poly.interiors]
+    #                 interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=0.0) for p in interiors]
+    #                 interiors = [np.pad(p, ((0, 1), (0, 0)), constant_values=1.0) for p in interiors]
+    #                 interiors = [V @ S @ M_inv @ p for p in interiors]
+    #                 interiors = [p[:2].round().astype(np.int32).T for p in interiors]
 
-                    cv2.fillPoly(render, interiors, 0, INTERPOLATION)
+    #                 cv2.fillPoly(render, interiors, 0, INTERPOLATION)
 
-            result.append(render)
+    #         result.append(render)
 
-        return 255 * np.stack(result, -1)
+    #     return 255 * np.stack(result, -1)
     
     def gen_vectorized_samples(self, map_annotation, example=None, feat_down_sample=32):
         '''
@@ -1139,8 +1139,14 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
                     bev_seg=False,
                     pv_seg=False,
                     seg_classes=1,
-                    segmap_classes=3,
+                    
                     feat_down_sample=32,
+
+                    segmap_classes=3,
+                    segmap_select_indexes=None,
+
+                    lidar_bev_maps_count=2,
+                    lidar_bev_maps_select_indexes=None
                  ),
                  *args, 
                  **kwargs):
@@ -1264,26 +1270,22 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             # plt.show()
             ###############################################################
         if input_dict['segmap'] is not None:
-            if self.aux_seg['segmap_classes'] == 3:
-                segmap = np.transpose(input_dict['segmap'], (2, 0, 1)) #[1]
-            else:
-                segmap = np.transpose(input_dict['segmap'], (2, 0, 1))[1]
-            segmap = np.expand_dims(segmap, axis=0)
+            # if self.aux_seg['segmap_classes'] == 3:
+            #     segmap = np.transpose(input_dict['segmap'], (2, 0, 1)) #[1]
+            # else:
+            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))
+            # segmap = np.expand_dims(segmap, axis=0)
+            if self.aux_seg["segmap_select_indexes"] is not None:
+                segmap = segmap[self.aux_seg["segmap_select_indexes"], :, :]
+
+            assert self.aux_seg['segmap_classes'] == segmap.shape[0]
             # anns_results = self.bev_to_mask(segmap, example=example, feat_down_sample=self.aux_seg['feat_down_sample'])
             
             ###############################################################
-            # import matplotlib.pyplot as plt
-            # plt.imshow(np.transpose(segmap, (1, 2, 0)), cmap='gray')  # Используем серую цветовую палитру для изображения
-            # plt.title("Second Channel of Segmap")
-            # plt.axis('off')  # Отключаем оси для чистоты отображения
-            # plt.show()
             
-            # import matplotlib.pyplot as plt
-
-            # plt.imshow(gt_semantic_mask[0], cmap='gray')
-            # plt.title('BEV Mask')
-            # plt.axis('off')
-            # plt.show()
+            print(segmap.shape)
+            # plt.figure()
+                        
 
             # fig, axes = plt.subplots(1, 6, figsize=(15, 5))
 
@@ -1299,7 +1301,37 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             # ###############################################################
             example['gt_segmap'] = DC(to_tensor(segmap), cpu_only=False)
             # example['gt_pv_segmap'] = DC(to_tensor(anns_results['gt_pv_segmap']), cpu_only=False)
-         
+        
+            
+        if input_dict["lidar_bev_maps"] is not None:
+            lidar_bev_maps = np.transpose(input_dict['lidar_bev_maps'], (2, 0, 1))
+            # lidar_bev_maps = np.expand_dims(lidar_bev_maps, axis=0)
+            if self.aux_seg["lidar_bev_maps_select_indexes"] is not None:
+                lidar_bev_maps = lidar_bev_maps[self.aux_seg["lidar_bev_maps_select_indexes"], :, :]
+
+            assert self.aux_seg['lidar_bev_maps_count'] == lidar_bev_maps.shape[0] 
+            print(lidar_bev_maps.shape)
+
+            example["gt_lidar_bev_maps"] = DC(to_tensor(lidar_bev_maps), cpu_only=False)
+
+        
+        # import matplotlib.pyplot as plt
+        # fig, axs = plt.subplots(1, 1 + self.aux_seg['segmap_classes']+ self.aux_seg['lidar_bev_maps_count']) 
+        # for i, ax2 in enumerate(axs[1:1 + self.aux_seg['segmap_classes']]):
+        #     ax2.imshow(segmap[i, :, :], cmap='gray')
+        #     ax2.set_title(f'segmap {i}')
+        #     ax2.axis('off')
+        # for i, ax2 in enumerate(axs[1 + self.aux_seg['segmap_classes']:]):
+        #     ax2.imshow(lidar_bev_maps[i, :, :], cmap='gray')
+        #     ax2.set_title(f'lidar_bev_maps {i}')
+        #     ax2.axis('off')
+        # axs[0].imshow(anns_results['gt_semantic_mask'][0, :, :], cmap='gray')
+        # axs[0].set_title('gt_semantic_mask')
+        # axs[0].axis('off') 
+        
+        # plt.show()
+
+
         return example
 
     def bev_mask_to_pvmask(self,
@@ -1502,7 +1534,8 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             frame_idx=info['frame_idx'],
             timestamp=info['timestamp'],
             map_location = info['map_location'],
-            segmap = info['segmap']
+            segmap = info['segmap'],
+            lidar_bev_maps = info["lidar_bev_maps"]
         )
         # lidar to ego transform
         lidar2ego = np.eye(4).astype(np.float32)

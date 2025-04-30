@@ -63,9 +63,13 @@ aux_seg_cfg = dict(
     pv_seg=True,
     segmap=True,
     seg_classes=1,
-    segmap_classes=3, # layers=['ped_crossing', 'drivable_area', 'road_segment']
+    segmap_classes=1, # layers=['ped_crossing', 'drivable_area', 'road_segment']
+    segmap_select_indexes=[1], # for data processing
     feat_down_sample=16,
     pv_thickness=1,
+    lidar_bev_maps=True,
+    lidar_bev_maps_count=2,
+    lidar_bev_maps_select_indexes=[0, 1]
 )
 
 model = dict(
@@ -274,7 +278,7 @@ test_pipeline = [
 samples_per_gpu=1
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=4, # TODO 12
+    workers_per_gpu=0, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -300,6 +304,7 @@ data = dict(
         data_root=data_root,
         ann_file=data_root + 'nuscenes_map_infos_temporal_val.pkl',
         map_ann_file=data_root + 'nuscenes_map_anns_val.json',
+        aux_seg=aux_seg_cfg,
         pipeline=test_pipeline,  bev_size=(bev_h_, bev_w_),
         pc_range=point_cloud_range,
         fixed_ptsnum_per_line=fixed_ptsnum_per_gt_line,
@@ -312,6 +317,7 @@ data = dict(
         data_root=data_root,
         ann_file=data_root + 'nuscenes_map_infos_temporal_val.pkl',
         map_ann_file=data_root + 'nuscenes_map_anns_val.json',
+        aux_seg=aux_seg_cfg,
         pipeline=test_pipeline, 
         bev_size=(bev_h_, bev_w_),
         pc_range=point_cloud_range,
@@ -371,17 +377,17 @@ log_config = dict(
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
-        dict(
-            type='WandbLoggerHook',
-            init_kwargs=dict(
-                project='mapnet_test_with_bsz2',   # Название проекта в WandB
-                name='1 bsz + r50',     # Имя эксперимента
-                config=dict(                # Дополнительные настройки эксперимента
-                    batch_size=samples_per_gpu*2,
-                    model='mapqr',
-                )
-            )
-        )
+        # dict(
+        #     type='WandbLoggerHook',
+        #     init_kwargs=dict(
+        #         project='mapnet_test_with_bsz2',   # Название проекта в WandB
+        #         name='1 bsz + r50',     # Имя эксперимента
+        #         config=dict(                # Дополнительные настройки эксперимента
+        #             batch_size=samples_per_gpu*2,
+        #             model='mapqr',
+        #         )
+        #     )
+        # )
     ])
 fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=3, interval=1)

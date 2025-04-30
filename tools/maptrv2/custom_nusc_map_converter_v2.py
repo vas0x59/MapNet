@@ -25,8 +25,20 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, Point, box, Mult
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import networkx as nx
+
+import open3d as o3d
+import pickle
+
+import cv2
+
+from mmdet3d.core.points import BasePoints, get_points_type
+
 sys.path.append('.')
 
+
+from mmdet3d.datasets.pipelines import LoadPointsFromMultiSweeps, LoadPointsFromFile
+
+import copy
 
 
 
@@ -256,6 +268,89 @@ def obtain_sensor2top(nusc,
     sweep['sensor2lidar_translation'] = T
     return sweep
 
+def kalman_pnts_to_grid(pnts_tr_all, s=1):
+    X_MIN, X_MAX = -15, 15
+    Y_MIN, Y_MAX = -30, 30
+    nx = 100*s
+    ny = 200*s
+    RES =  (X_MAX - X_MIN)/nx
+    # --- constants -------------------------------------------------------------
+    # SIGMA_START   = 0.05                      # σ0  (prior variance)
+    # SIGMA_MEASURE = 0.5                       # σz² (measurement variance)
+    # MU_START      = 0.1                       # μ0  (prior mean)
+    # INV_SIG0      = 1.0 / SIGMA_START
+    # INV_SIGZ      = 1.0 / SIGMA_MEASURE
+    SIGMA_MEASURE =  0.5                     # σz² (measurement variance)
+    SIGMA_START   = 10*SIGMA_MEASURE                      # σ0  (prior variance)
+
+    # SIGMA_START   = 10                      # σ0  (prior variance)
+    # SIGMA_MEASURE = 2                     # σz² (measurement variance)
+    MU_START      = 0.2                       # μ0  (prior mean)
+    INV_SIG0      = 1.0 / SIGMA_START**2
+    INV_SIGZ      = 1.0 / SIGMA_MEASURE**2
+
+    # --- prepare points --------------------------------------------------------
+    # alpha = np.clip(1 / np.sin(np.abs(pnts_tr_all[:, 4])) / 5, 0, 1)   # shape (N,)
+    alpha = 1
+    x, y, z = pnts_tr_all[:, 0], pnts_tr_all[:, 1], pnts_tr_all[:, 3] * alpha
+
+    ix = ((x - X_MIN) / RES).round().astype(int)
+    iy = ((y - Y_MIN) / RES).round().astype(int)
+
+    # --- keep only points that fall inside the grid ---------------------------
+    inside = (0 <= ix) & (ix < nx) & (0 <= iy) & (iy < ny)
+    ix, iy, z = ix[inside], iy[inside], z[inside]
+
+    # --- collapse 2-D indices to 1-D so we can use bincount -------------------
+    flat = iy * nx + ix                            # shape (N,)
+    n_cells = nx * ny
+
+    # accumulate   n_j   and   Σz_j   per cell
+    counts   = np.bincount(flat, minlength=n_cells)                    # n_j
+    sum_z    = np.bincount(flat, weights=z, minlength=n_cells)         # Σ z_i  per cell
+
+    # --- closed-form posterior -------------------------------------------------
+    inv_sigma_post = INV_SIG0 + counts * INV_SIGZ                      # 1/σ²_post
+    sigma_post     = np.where(counts, 1.0 / inv_sigma_post, np.nan)    # σ²_post  or NaN
+    mu_post        = np.where(
+        counts,
+        (MU_START * INV_SIG0 + sum_z * INV_SIGZ) * sigma_post,         # μ_post
+        np.nan)
+
+    # --- reshape back to (ny, nx) ---------------------------------------------
+    grid_        = mu_post.reshape(ny, nx).astype(np.float32)
+    sigma_grid_  = sigma_post.reshape(ny, nx).astype(np.float32)
+    return grid_
+
+
+def idw_grid_interp(grid, k=8, d=10):
+    from scipy.spatial import cKDTree
+
+    # coordinates of valid pixels
+    pts       = np.column_stack(np.nonzero(~np.isnan(grid)))
+    vals      = grid[~np.isnan(grid)]
+    tree      = cKDTree(pts)
+
+    qry_y, qry_x = np.nonzero(np.isnan(grid))
+    d, idx = tree.query(np.column_stack((qry_y, qry_x)),
+                        k=k, distance_upper_bound=d)
+
+    sentinel = len(vals)              # 9078 in your run
+    mask     = (idx == sentinel)     # True where neighbour is missing
+
+    # replace invalid indices with 0 so we can index vals
+    idx[mask] = 0
+    w         = 1/(d + 1e-6 )
+    w[mask]   = 0                     # those neighbours contribute 0 weight
+
+    num = np.sum(w * vals[idx], axis=1)
+    den = np.sum(w, axis=1)
+    grid_filled = grid.copy()
+    grid_filled[qry_y, qry_x] = np.divide(num, den, out=np.full_like(num, np.nan), where=den>0)
+
+    return grid_filled
+
+
 
 def _fill_trainval_infos(nusc,
                          nusc_can_bus,
@@ -283,9 +378,10 @@ def _fill_trainval_infos(nusc,
     train_nusc_infos = []
     val_nusc_infos = []
     frame_idx = 0
+    kkkk = 0
     for sample in mmcv.track_iter_progress(nusc.sample):
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
-
+        kkkk+=1
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
@@ -358,6 +454,153 @@ def _fill_trainval_infos(nusc,
             else:
                 break
         info['sweeps'] = sweeps
+
+
+        ##### begin lidar features generation
+
+        sd_rec_init = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        sweep_init = obtain_sensor2top(nusc, sample['data']['LIDAR_TOP'], l2e_t,
+                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+        
+
+        distant_sweeps_collection = [sweep_init]
+
+        # search in past
+        sd_rec = copy.deepcopy(sd_rec_init)
+        sweep_prev = copy.deepcopy(sweep_init)
+        i = 0
+        j = 0
+        D_th = 1.2
+        while i < 8 and j < 500:
+            if not sd_rec['prev'] == '':
+                sweep = obtain_sensor2top(nusc, sd_rec['prev'], l2e_t,
+                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+                D = np.linalg.norm(np.array(sweep["ego2global_translation"]) - np.array(sweep_prev["ego2global_translation"]))
+                # obtain annotation
+                # import ipdb;ipdb.set_trace()
+                if D > D_th:
+                    distant_sweeps_collection.append(sweep)
+                    sweep_prev =  copy.deepcopy(sweep)
+                    i+=1
+                sd_rec =  copy.deepcopy(nusc.get('sample_data', sd_rec['prev']))
+                
+                j+=1
+                
+            else:
+                break
+        print(i, j)
+        # search in past
+        sd_rec = copy.deepcopy(sd_rec_init)
+        sweep_prev = copy.deepcopy(sweep_init)
+        i = 0
+        j = 0
+        while i < 8 and j < 500:
+            if not sd_rec['next'] == '':
+                sweep = obtain_sensor2top(nusc, sd_rec['next'], l2e_t,
+                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+                D = np.linalg.norm(np.array(sweep["ego2global_translation"]) - np.array(sweep_prev["ego2global_translation"]))
+                if D > D_th:
+                    distant_sweeps_collection.append(sweep)
+                    sweep_prev =  copy.deepcopy(sweep)
+                    i+=1
+                sd_rec =  copy.deepcopy(nusc.get('sample_data', sd_rec['next']))
+                j+=1
+                
+            else:
+                break
+        import time 
+        
+        # if len(sweeps) > 0:
+        dummy_object = LoadPointsFromMultiSweeps(sweeps_num=10, load_dim=5)
+
+        ts = info['timestamp']
+        sweep_points_list = []
+
+        min_bound = np.array([-70, -70, -3]).astype(np.float32)
+        max_bound = np.array([70, 70, 3]).astype(np.float32)
+
+        pnts_tr_all = []
+
+        for idx in range(len(distant_sweeps_collection)):
+            sweep = distant_sweeps_collection[idx]
+            t_load_st = time.time()
+            points_sweep = dummy_object._load_points(sweep['data_path'])
+            print((time.time() - t_load_st)*1000, "\n\n")       
+            points_sweep = np.copy(points_sweep).reshape(-1, dummy_object.load_dim)
+            # if self.remove_close:
+            points_sweep = dummy_object._remove_close(points_sweep)
+            sweep_points_list.append(points_sweep)
+            pcd = o3d.t.geometry.PointCloud()
+            pcd.point['positions'] = o3d.core.Tensor(points_sweep[:, :3], dtype=o3d.core.Dtype.Float32)
+            pcd.point['intensities'] = o3d.core.Tensor(points_sweep[:, [3]], dtype=o3d.core.Dtype.Float32)
+
+            mask = (pcd.point["positions"] >= o3d.core.Tensor(min_bound)).all(1) & \
+            (pcd.point["positions"] <= o3d.core.Tensor(max_bound)).all(1)
+            pcd_in_box = pcd.select_by_mask(mask)
+            
+            pcd = pcd_in_box.voxel_down_sample(0.2)
+
+            pnts = pcd.point["positions"].numpy()
+            ints = pcd.point["intensities"].numpy()
+            R = sweep["sensor2lidar_rotation"]
+            t = sweep["sensor2lidar_translation"]
+
+
+            R_es = Quaternion(sweep['sensor2ego_rotation']).rotation_matrix
+            t_es = sweep['sensor2ego_translation']
+            pnts_e = pnts @ R_es.T + t_es
+            mask = ~(((pnts_e[:, 0] < 3)&(pnts_e[:, 0] > -1)&(np.abs(pnts_e[:, 1]) < 1.5)) | (pnts_e[:, 2] > 0.4) | (pnts_e[:, 2] < -1))
+            pnts = pnts[mask]
+            ints = ints[mask]
+
+            pnts_tr = pnts @ R.T + t
+            data = np.zeros(shape=(pnts_tr.shape[0], 6))
+            data[:, :3] = pnts_tr[:, :3]
+            data[:, 3] = np.clip(ints[:, 0]/40, 0, 10)
+            data[:, 4] = np.arctan2(pnts[:, 2], np.linalg.norm(pnts[:, :2], axis=1))
+            data[:, 5] = np.linalg.norm(pnts[:, :3], axis=1)
+            pnts_tr_all.append(data)
+
+            # Save it
+            # os.makedirs(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}", exist_ok=True)
+            # pickle.dump(sweep, open(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}/{idx}.sweep.pickle", "wb"))
+            # o3d.t.io.write_point_cloud(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}/{idx}.pcd", pcd)
+
+
+
+        pnts_tr_all = np.vstack(pnts_tr_all)
+
+        grid = kalman_pnts_to_grid(pnts_tr_all, s=2)
+        grid = idw_grid_interp(grid, k=12, d=20)
+        log_grid = np.log(grid + 0.001)
+        blur = cv2.GaussianBlur(log_grid, ksize=(7, 7), sigmaX=0.2)
+
+        # blur = cv2.medianBlur(log_grid, 3)
+        
+        # 3. Sobel gradients ----------------------------------------------------------
+        # x- and y-direction, 16-bit signed output to avoid clipping
+        sobel_ksize=7
+        grad_x = cv2.Sobel(blur, cv2.CV_64F, dx=1, dy=0, ksize=sobel_ksize,  scale=1.0/pow(2, sobel_ksize*2 - 1 - 2))
+        grad_y = cv2.Sobel(blur, cv2.CV_64F, dx=0, dy=1, ksize=sobel_ksize,  scale=1.0/pow(2, sobel_ksize*2 - 1 - 2))
+        grad_x[np.isnan(grad_x)] = 0
+        grad_y[np.isnan(grad_y)] = 0
+        grad_x =cv2.resize(grad_x, (100, 200))*2
+        grad_y =cv2.resize(grad_y, (100, 200))*2
+        grad_x = np.tanh(grad_x)
+        grad_y = np.tanh(grad_y)
+        
+
+        lidar_bev_maps = np.dstack((grad_x, grad_y))
+        info["lidar_bev_maps"] = lidar_bev_maps
+
+
+        ##### end lidar features generation
+
+
+
+
+
+
         # obtain annotation
         # import ipdb;ipdb.set_trace()
         info = obtain_vectormap(nusc_maps, map_explorer, info, point_cloud_range)
@@ -365,6 +608,9 @@ def _fill_trainval_infos(nusc,
         info = get_static_layers(nusc_maps, info, 
                           map_location
                           )
+        
+        # if len(sweeps) > 0:
+        #     np.save(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}/segmap.npy", info["segmap"])
 
         if sample['scene_token'] in train_scenes:
             train_nusc_infos.append(info)
@@ -386,7 +632,7 @@ def get_view_matrix(h=200, w=200, h_meters=100.0, w_meters=100.0, offset=0.0):
 def get_static_layers(nusc_map, 
                       sample,
                       location, 
-                      layers=['ped_crossing', 'drivable_area', 'road_segment'], 
+                      layers=['ped_crossing', 'drivable_area'], 
                       point_cloud_range = [-10.0, -10.0,-10.0, 10.0, 10.0, 10.0],
                       bev={'h': 200, 'w': 100, 'h_meters': 60, 'w_meters': 30, 'offset': 0.0},
                       canvas_size = (200, 100)):
@@ -1056,21 +1302,21 @@ args = parser.parse_args()
 
 
 if __name__ == '__main__':
-    train_version = f'{args.version}-trainval'
+    # train_version = f'{args.version}-trainval'
     nuscenes_data_prep(
         root_path=args.root_path,
         can_bus_root_path=args.canbus,
         info_prefix=args.extra_tag,
-        version=train_version,
+        version=args.version,
         dataset_name='NuScenesDataset',
         out_dir=args.out_dir,
         max_sweeps=args.max_sweeps)
-    test_version = f'{args.version}-test'
-    nuscenes_data_prep(
-        root_path=args.root_path,
-        can_bus_root_path=args.canbus,
-        info_prefix=args.extra_tag,
-        version=test_version,
-        dataset_name='NuScenesDataset',
-        out_dir=args.out_dir,
-        max_sweeps=args.max_sweeps)
+    # test_version = f'{args.version}-test'
+    # nuscenes_data_prep(
+    #     root_path=args.root_path,
+    #     can_bus_root_path=args.canbus,
+    #     info_prefix=args.extra_tag,
+    #     version=test_version,
+    #     dataset_name='NuScenesDataset',
+    #     out_dir=args.out_dir,
+    #     max_sweeps=args.max_sweeps)
