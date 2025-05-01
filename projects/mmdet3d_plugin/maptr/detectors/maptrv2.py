@@ -130,6 +130,7 @@ class MapTRv2(MVXTwoStageDetector):
                           gt_seg_mask=None,
                           gt_pv_seg_mask=None,
                           gt_segmap=None,
+                          gt_lidar_bev_maps=None
                           ):
         """Forward function'
         Args:
@@ -158,7 +159,7 @@ class MapTRv2(MVXTwoStageDetector):
                 loss_depth = torch.nan_to_num(loss_depth)
             losses.update(loss_depth=loss_depth)
 
-        loss_inputs = [gt_bboxes_3d, gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, outs, gt_segmap]
+        loss_inputs = [gt_bboxes_3d, gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, outs, gt_segmap, gt_lidar_bev_maps]
         losses_pts = self.pts_bbox_head.loss(*loss_inputs, img_metas=img_metas)
         losses.update(losses_pts)
         # import ipdb;ipdb.set_trace()
@@ -171,7 +172,7 @@ class MapTRv2(MVXTwoStageDetector):
             multi_gt_labels_3d[i] = each_gt_labels_3d.repeat(k_one2many)
         # import ipdb;ipdb.set_trace()
         one2many_outs = outs['one2many_outs']
-        loss_one2many_inputs = [multi_gt_bboxes_3d, multi_gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, one2many_outs, gt_segmap]
+        loss_one2many_inputs = [multi_gt_bboxes_3d, multi_gt_labels_3d, gt_seg_mask, gt_pv_seg_mask, one2many_outs, gt_segmap, gt_lidar_bev_maps]
         loss_dict_one2many = self.pts_bbox_head.loss(*loss_one2many_inputs, img_metas=img_metas)
 
         lambda_one2many = self.pts_bbox_head.lambda_one2many
@@ -276,7 +277,8 @@ class MapTRv2(MVXTwoStageDetector):
                       gt_depth=None,
                       gt_seg_mask=None,
                       gt_pv_seg_mask=None,
-                      gt_segmap=None
+                      gt_segmap=None,
+                      gt_lidar_bev_maps=None
                       ):
         """Forward training function.
         Args:
@@ -319,7 +321,7 @@ class MapTRv2(MVXTwoStageDetector):
         losses = dict()
         losses_pts = self.forward_pts_train(img_feats, lidar_feat, gt_bboxes_3d,
                                             gt_labels_3d, img_metas,
-                                            gt_bboxes_ignore, prev_bev, gt_depth,gt_seg_mask,gt_pv_seg_mask, gt_segmap)
+                                            gt_bboxes_ignore, prev_bev, gt_depth,gt_seg_mask,gt_pv_seg_mask, gt_segmap, gt_lidar_bev_maps)
 
         losses.update(losses_pts)
         return losses

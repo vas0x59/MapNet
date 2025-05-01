@@ -1269,11 +1269,12 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             # plt.suptitle('PV Masks for All Cameras')
             # plt.show()
             ###############################################################
-        if input_dict['segmap'] is not None:
+        if input_dict['segmap_path'] is not None:
             # if self.aux_seg['segmap_classes'] == 3:
             #     segmap = np.transpose(input_dict['segmap'], (2, 0, 1)) #[1]
             # else:
-            segmap = np.transpose(input_dict['segmap'], (2, 0, 1))
+            segmap = np.load(input_dict['segmap_path'])
+            segmap = np.transpose(segmap, (2, 0, 1))
             # segmap = np.expand_dims(segmap, axis=0)
             if self.aux_seg["segmap_select_indexes"] is not None:
                 segmap = segmap[self.aux_seg["segmap_select_indexes"], :, :]
@@ -1283,7 +1284,7 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             
             ###############################################################
             
-            print(segmap.shape)
+            # print(segmap.shape)
             # plt.figure()
                         
 
@@ -1303,14 +1304,15 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             # example['gt_pv_segmap'] = DC(to_tensor(anns_results['gt_pv_segmap']), cpu_only=False)
         
             
-        if input_dict["lidar_bev_maps"] is not None:
-            lidar_bev_maps = np.transpose(input_dict['lidar_bev_maps'], (2, 0, 1))
+        if input_dict["lidar_bev_maps_path"] is not None:
+            lidar_bev_maps = np.load(input_dict["lidar_bev_maps_path"])
+            lidar_bev_maps = np.transpose(lidar_bev_maps, (2, 0, 1))
             # lidar_bev_maps = np.expand_dims(lidar_bev_maps, axis=0)
             if self.aux_seg["lidar_bev_maps_select_indexes"] is not None:
                 lidar_bev_maps = lidar_bev_maps[self.aux_seg["lidar_bev_maps_select_indexes"], :, :]
 
             assert self.aux_seg['lidar_bev_maps_count'] == lidar_bev_maps.shape[0] 
-            print(lidar_bev_maps.shape)
+            # print(lidar_bev_maps.shape)
 
             example["gt_lidar_bev_maps"] = DC(to_tensor(lidar_bev_maps), cpu_only=False)
 
@@ -1534,8 +1536,8 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             frame_idx=info['frame_idx'],
             timestamp=info['timestamp'],
             map_location = info['map_location'],
-            segmap = info['segmap'],
-            lidar_bev_maps = info["lidar_bev_maps"]
+            segmap_path = info['segmap_path'],
+            lidar_bev_maps_path = info["lidar_bev_maps_path"]
         )
         # lidar to ego transform
         lidar2ego = np.eye(4).astype(np.float32)

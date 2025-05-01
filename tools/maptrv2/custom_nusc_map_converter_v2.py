@@ -413,6 +413,7 @@ def _fill_trainval_infos(nusc,
     to_init = False
 
     for sample in mmcv.track_iter_progress(nusc.sample):
+        # print(sample)
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
         kkkk+=1
         lidar_token = sample['data']['LIDAR_TOP']
@@ -495,7 +496,7 @@ def _fill_trainval_infos(nusc,
 
         ##### begin lidar features generation
 
-        D_th = 0.55
+        D_th = 0.65
 
         dummy_object = LoadPointsFromMultiSweeps(sweeps_num=10, load_dim=5)
 
@@ -693,10 +694,14 @@ def _fill_trainval_infos(nusc,
         grad_y =cv2.resize(grad_y, (100, 200))*2
         grad_x = np.tanh(grad_x/1.2)*1.2
         grad_y = np.tanh(grad_y/1.2)*1.2
-        
+        # nusc.pa
 
         lidar_bev_maps = np.dstack((grad_x, grad_y))
-        info["lidar_bev_maps"] = lidar_bev_maps
+        lidar_bev_map_path = f"{nusc.dataroot}/lidar_bev_maps/{sample['token']}.npy"
+        if not os.path.isfile(lidar_bev_map_path):
+            np.save(lidar_bev_map_path,  lidar_bev_maps)
+        info["lidar_bev_maps_path"] = lidar_bev_map_path
+        # info["segmap_path"] = f"/home/vasily/nuScenes/segmaps/{kkkk}.npy"
 
         # import matplotlib.pyplot as plt
         # # plt.imshow(lidar_bev_maps[:, :, 0])
@@ -711,7 +716,7 @@ def _fill_trainval_infos(nusc,
         # import ipdb;ipdb.set_trace()
         info = obtain_vectormap(nusc_maps, map_explorer, info, point_cloud_range)
         
-        info = get_static_layers(nusc_maps, info, 
+        info = get_static_layers(nusc, nusc_maps, info, 
                           map_location
                           )
         
@@ -735,7 +740,7 @@ def get_view_matrix(h=200, w=200, h_meters=100.0, w_meters=100.0, offset=0.0):
             [ 0.,  0.,            1.]
         ])
 
-def get_static_layers(nusc_map, 
+def get_static_layers(nusc, nusc_map, 
                       sample,
                       location, 
                       layers=['ped_crossing', 'drivable_area'], 
@@ -826,8 +831,10 @@ def get_static_layers(nusc_map,
 
         result.append(render)
 
-    
-    sample["segmap"] = 255 * np.stack(result, -1)
+    path = f"{nusc.dataroot}/segmaps/{sample['token']}.npy"
+    if not os.path.isfile(path):
+        np.save(path,  255 * np.stack(result, -1))
+    sample["segmap_path"] = path
     return sample
 
 def obtain_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
