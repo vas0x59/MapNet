@@ -290,8 +290,8 @@ def kalman_pnts_to_grid(pnts_tr_all, s=1):
     INV_SIGZ      = 1.0 / SIGMA_MEASURE**2
 
     # --- prepare points --------------------------------------------------------
-    # alpha = np.clip(1 / np.sin(np.abs(pnts_tr_all[:, 4])) / 5, 0, 1)   # shape (N,)
-    alpha = 1
+    alpha = np.clip(1 / np.sin(np.abs(pnts_tr_all[:, 4])) / 5, 0, 1)   # shape (N,)
+    # alpha = 1
     x, y, z = pnts_tr_all[:, 0], pnts_tr_all[:, 1], pnts_tr_all[:, 3] * alpha
 
     ix = ((x - X_MIN) / RES).round().astype(int)
@@ -450,11 +450,9 @@ def _fill_trainval_infos(nusc,
             frame_idx = 0
         else:
             frame_idx += 1
-        
+        to_init = False
         if frame_idx == 1:
-            to_init = True
-            distant_sweeps_collection = OrderedDict()
-            # distant_sweeps_collection_idx = []
+            to_init = True 
 
 
         l2e_r = info['lidar2ego_rotation']
@@ -497,12 +495,15 @@ def _fill_trainval_infos(nusc,
 
         ##### begin lidar features generation
 
-        D_th = 0.8
+        D_th = 0.55
 
         dummy_object = LoadPointsFromMultiSweeps(sweeps_num=10, load_dim=5)
 
         
         def load_sweep(idd, sd_rec):
+            min_bound = np.array([-70, -70, -3]).astype(np.float32)
+            max_bound = np.array([70, 70, 3]).astype(np.float32)
+
             # t_load_st = time.time()
             data_path = str(nusc.get_sample_data_path(sd_rec['token']))
             points_sweep = dummy_object._load_points(data_path)
@@ -511,7 +512,7 @@ def _fill_trainval_infos(nusc,
             points_sweep = np.copy(points_sweep).reshape(-1, dummy_object.load_dim)
             # if self.remove_close:
             points_sweep = dummy_object._remove_close(points_sweep)
-            sweep_points_list.append(points_sweep)
+            # sweep_points_list.append(points_sweep)
             pcd = o3d.t.geometry.PointCloud()
             pcd.point['positions'] = o3d.core.Tensor(points_sweep[:, :3], dtype=o3d.core.Dtype.Float32)
             pcd.point['intensities'] = o3d.core.Tensor(points_sweep[:, [3]], dtype=o3d.core.Dtype.Float32)
@@ -573,46 +574,77 @@ def _fill_trainval_infos(nusc,
 
                     
 
-        N = 10
+        N = 25
         current_idx = sample['data']['LIDAR_TOP']
+        sd_rec_current = nusc.get('sample_data', current_idx)
+        print(sd_rec_current["prev"], current_idx, sd_rec_current["next"])
 
+        
+        if len(next_idx) > 0:
+            # next_t = np.array(nusc.get('ego_pose', sweeps_db[next_idx[0]]["sd_rec"]["ego_pose_token"])["translation"])
+            # current_t = np.array(nusc.get('ego_pose',sd_rec_current["ego_pose_token"])["translation"])
+            # central_t = np.array(nusc.get('ego_pose', sweeps_db[central_idx]["sd_rec"]["ego_pose_token"])["translation"])
+            found = False
+            for i in range(len(next_idx)):
+                next_t = int(sweeps_db[next_idx[i]]["sd_rec"]["timestamp"])
+                current_t = int(sd_rec_current["timestamp"])
+                central_t = int(sweeps_db[next_idx[i-1]]["sd_rec"]["timestamp"])
+                # print(next_t, current_t, central_t)
+                
+                if  (central_t <= current_t ) and (current_t<= next_t) :
+
+                    prev_idx.extend(next_idx[:i])
+                    prev_idx = prev_idx[-N:]
+                    # central_idx = next_idx[i]
+                    del next_idx[:i]
+                    print("search starts at len:", len(next_idx), next_idx)
+
+                    search_sweeps(next_idx[-1], "next", next_idx, N)
+                    found = True
+                    break
+            if not found:
+                print("PUPUPUPU!\nPUPUPUPU\n!!!")
+                next_idx = [current_idx]
+                prev_idx = []
+                search_sweeps(current_idx, "next", next_idx, N)
+                search_sweeps(current_idx, "prev", prev_idx, N)
+                
         if to_init:
-            central_idx = current_idx
-            next_idx = []
+            print("init")
+            # central_idx = current_idx
+            next_idx = [current_idx]
             prev_idx = []
+            sweeps_db = dict()
             
-            search_sweeps(central_idx, "next", next_idx, N)
+            search_sweeps(next_idx[0], "next", next_idx, N)
             # search_sweeps(central_idx, "prev", prev_idx, N)
             
 
-
-        if current_idx == next_idx[0]:
-            prev_idx.append(central_idx)
-            central_idx = next_idx[0]
-            del next_idx[0]
-
-            search_sweeps(central_idx, "next", next_idx, N)
-            prev_idx = prev_idx[-N:]
-            # nex
+        
+                # nex
+        # central_idx = current_idx
+        # next_idx = []
+        # prev_idx = []
+        
+        # search_sweeps(central_idx, "next", next_idx, N)
+        # search_sweeps(central_idx, "prev", prev_idx, N)
             
         
         # sync db
-        all_idx = [*prev_idx, central_idx, *next_idx ]
-        print("all_idx", len(all_idx))
+        # sweeps_db = dict()
+        all_idx = [*prev_idx[::], *next_idx ]
+        print("all_idx", len(all_idx), len(prev_idx), len(next_idx))
         update_db(all_idx, sweeps_db)
          
-        sd_rec_current = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
-        
-        dd = {
-            sample["data"]["LIDAR_TOP"] : load_sweep(sample["data"]["LIDAR_TOP"], sd_rec_current)
-        }
-        
+        dd = dict()
+        if not current_idx in sweeps_db.keys():
+            dd = {
+                current_idx : load_sweep(current_idx, sd_rec_current)
+            }
+            
 
-        ts = info['timestamp']
-        sweep_points_list = []
+        ts = info['timestamp'] 
 
-        min_bound = np.array([-70, -70, -3]).astype(np.float32)
-        max_bound = np.array([70, 70, 3]).astype(np.float32)
 
         pnts_tr_all = []
 
@@ -644,10 +676,11 @@ def _fill_trainval_infos(nusc,
 
         grid = kalman_pnts_to_grid(pnts_tr_all, s=2)
         grid = idw_grid_interp(grid, k=12, d=20)
-        log_grid = np.log(grid + 0.001)
-        blur = cv2.GaussianBlur(log_grid, ksize=(7, 7), sigmaX=0.2)
 
-        # blur = cv2.medianBlur(log_grid, 3)
+        log_grid = np.log(grid + 0.001)
+        # blur = cv2.GaussianBlur(log_grid, ksize=(7, 7), sigmaX=0.2)
+
+        blur = cv2.medianBlur(log_grid, 3)
         
         # 3. Sobel gradients ----------------------------------------------------------
         # x- and y-direction, 16-bit signed output to avoid clipping
@@ -658,13 +691,17 @@ def _fill_trainval_infos(nusc,
         grad_y[np.isnan(grad_y)] = 0
         grad_x =cv2.resize(grad_x, (100, 200))*2
         grad_y =cv2.resize(grad_y, (100, 200))*2
-        grad_x = np.tanh(grad_x)
-        grad_y = np.tanh(grad_y)
+        grad_x = np.tanh(grad_x/1.2)*1.2
+        grad_y = np.tanh(grad_y/1.2)*1.2
         
 
         lidar_bev_maps = np.dstack((grad_x, grad_y))
         info["lidar_bev_maps"] = lidar_bev_maps
 
+        # import matplotlib.pyplot as plt
+        # # plt.imshow(lidar_bev_maps[:, :, 0])
+        # plt.imshow(lidar_bev_maps[:, :, 1])
+        # plt.show()
 
         ##### end lidar features generation
 
