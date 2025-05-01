@@ -4,7 +4,7 @@ import sys
 import mmcv
 import numpy as np
 import os
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.geometry_utils import view_points
 from os import path as osp
@@ -351,6 +351,14 @@ def idw_grid_interp(grid, k=8, d=10):
     return grid_filled
 
 
+def get_next_key(odict, current_key):
+    keys = list(odict.keys())
+    try:
+        idx = keys.index(current_key)
+        return keys[idx + 1]
+    except (ValueError, IndexError):
+        return None  
+
 
 def _fill_trainval_infos(nusc,
                          nusc_can_bus,
@@ -379,6 +387,31 @@ def _fill_trainval_infos(nusc,
     val_nusc_infos = []
     frame_idx = 0
     kkkk = 0
+
+    ### distant sweeps preloaded collection
+    # distant_sweeps_collection = OrderedDict()
+    # distant_sweeps_collection_idx = []
+
+    central_idx = ""
+    next_idx = []
+    prev_idx = []
+
+    sweeps_db = dict()
+
+    """
+    [ x  |  |  | ]
+    [ |  x  |  |  | ]
+    [ |  |  x  |  |  | ]
+    [ |  |  |  x  |  |  | ]
+       [ |  |  |  x  |  |  | ]
+          [ |  |  |  x  |  |  | ]
+             [ |  |  |  x  |  |  | ]
+                [ |  |  |  x  |  | ]
+                   [ |  |  |  x  | ]
+                      [ |  |  |  x ]
+    """
+    to_init = False
+
     for sample in mmcv.track_iter_progress(nusc.sample):
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
         kkkk+=1
@@ -417,6 +450,12 @@ def _fill_trainval_infos(nusc,
             frame_idx = 0
         else:
             frame_idx += 1
+        
+        if frame_idx == 1:
+            to_init = True
+            distant_sweeps_collection = OrderedDict()
+            # distant_sweeps_collection_idx = []
+
 
         l2e_r = info['lidar2ego_rotation']
         l2e_t = info['lidar2ego_translation']
@@ -458,74 +497,17 @@ def _fill_trainval_infos(nusc,
 
         ##### begin lidar features generation
 
-        sd_rec_init = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
-        sweep_init = obtain_sensor2top(nusc, sample['data']['LIDAR_TOP'], l2e_t,
-                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
-        
+        D_th = 0.8
 
-        distant_sweeps_collection = [sweep_init]
-
-        # search in past
-        sd_rec = copy.deepcopy(sd_rec_init)
-        sweep_prev = copy.deepcopy(sweep_init)
-        i = 0
-        j = 0
-        D_th = 1.2
-        while i < 8 and j < 500:
-            if not sd_rec['prev'] == '':
-                sweep = obtain_sensor2top(nusc, sd_rec['prev'], l2e_t,
-                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
-                D = np.linalg.norm(np.array(sweep["ego2global_translation"]) - np.array(sweep_prev["ego2global_translation"]))
-                # obtain annotation
-                # import ipdb;ipdb.set_trace()
-                if D > D_th:
-                    distant_sweeps_collection.append(sweep)
-                    sweep_prev =  copy.deepcopy(sweep)
-                    i+=1
-                sd_rec =  copy.deepcopy(nusc.get('sample_data', sd_rec['prev']))
-                
-                j+=1
-                
-            else:
-                break
-        print(i, j)
-        # search in past
-        sd_rec = copy.deepcopy(sd_rec_init)
-        sweep_prev = copy.deepcopy(sweep_init)
-        i = 0
-        j = 0
-        while i < 8 and j < 500:
-            if not sd_rec['next'] == '':
-                sweep = obtain_sensor2top(nusc, sd_rec['next'], l2e_t,
-                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
-                D = np.linalg.norm(np.array(sweep["ego2global_translation"]) - np.array(sweep_prev["ego2global_translation"]))
-                if D > D_th:
-                    distant_sweeps_collection.append(sweep)
-                    sweep_prev =  copy.deepcopy(sweep)
-                    i+=1
-                sd_rec =  copy.deepcopy(nusc.get('sample_data', sd_rec['next']))
-                j+=1
-                
-            else:
-                break
-        import time 
-        
-        # if len(sweeps) > 0:
         dummy_object = LoadPointsFromMultiSweeps(sweeps_num=10, load_dim=5)
 
-        ts = info['timestamp']
-        sweep_points_list = []
-
-        min_bound = np.array([-70, -70, -3]).astype(np.float32)
-        max_bound = np.array([70, 70, 3]).astype(np.float32)
-
-        pnts_tr_all = []
-
-        for idx in range(len(distant_sweeps_collection)):
-            sweep = distant_sweeps_collection[idx]
-            t_load_st = time.time()
-            points_sweep = dummy_object._load_points(sweep['data_path'])
-            print((time.time() - t_load_st)*1000, "\n\n")       
+        
+        def load_sweep(idd, sd_rec):
+            # t_load_st = time.time()
+            data_path = str(nusc.get_sample_data_path(sd_rec['token']))
+            points_sweep = dummy_object._load_points(data_path)
+            
+            # print((time.time() - t_load_st)*1000, "\n\n")       
             points_sweep = np.copy(points_sweep).reshape(-1, dummy_object.load_dim)
             # if self.remove_close:
             points_sweep = dummy_object._remove_close(points_sweep)
@@ -542,9 +524,106 @@ def _fill_trainval_infos(nusc,
 
             pnts = pcd.point["positions"].numpy()
             ints = pcd.point["intensities"].numpy()
+            return {
+                "pnts" : pnts,
+                "ints" : ints,
+                "sd_rec" : sd_rec,
+                "id" : idd
+            }
+        
+        def search_sweeps(start_idx, field, list_to_update, N, M=500):
+            sd_rec_init = nusc.get('sample_data', start_idx)
+            
+            sd_rec = copy.deepcopy(sd_rec_init)
+            pose_record_prev = copy.deepcopy(nusc.get('ego_pose', sd_rec['ego_pose_token']))
+            j = 0
+            while len(list_to_update) < N and j < M:
+                if not sd_rec[field] == '':
+                    # sweep = obtain_sensor2top(nusc, sd_rec[field], l2e_t,
+                    #                         l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+                    pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
+                    D = np.linalg.norm(np.array(pose_record["translation"]) - np.array(pose_record_prev["translation"]))
+                    # obtain annotation
+                    # import ipdb;ipdb.set_trace()
+                    iddd =  sd_rec[field]
+                    sd_rec =  copy.deepcopy(nusc.get('sample_data', sd_rec[field]))
+                    if D > D_th:
+                        list_to_update.append(iddd)
+                        pose_record_prev =  copy.deepcopy(pose_record)
+                    
+                    j+=1
+                    
+                else:
+                    break
+            # else:
+                
+        
+        def update_db(all_idx, sweeps_db):
+            new = set(all_idx) - set(sweeps_db.keys())
+            to_del = set(sweeps_db.keys()) - set(all_idx)
+            for i in to_del:
+                sweeps_db.pop(i)
+            
+            for n in new:
+                sd_rec = nusc.get('sample_data', n)
+                # sweep = obtain_sensor2top(nusc, n, l2e_t,
+                #                             l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+                sweeps_db[n] = load_sweep(n, sd_rec)
+
+
+                    
+
+        N = 10
+        current_idx = sample['data']['LIDAR_TOP']
+
+        if to_init:
+            central_idx = current_idx
+            next_idx = []
+            prev_idx = []
+            
+            search_sweeps(central_idx, "next", next_idx, N)
+            # search_sweeps(central_idx, "prev", prev_idx, N)
+            
+
+
+        if current_idx == next_idx[0]:
+            prev_idx.append(central_idx)
+            central_idx = next_idx[0]
+            del next_idx[0]
+
+            search_sweeps(central_idx, "next", next_idx, N)
+            prev_idx = prev_idx[-N:]
+            # nex
+            
+        
+        # sync db
+        all_idx = [*prev_idx, central_idx, *next_idx ]
+        print("all_idx", len(all_idx))
+        update_db(all_idx, sweeps_db)
+         
+        sd_rec_current = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        
+        dd = {
+            sample["data"]["LIDAR_TOP"] : load_sweep(sample["data"]["LIDAR_TOP"], sd_rec_current)
+        }
+        
+
+        ts = info['timestamp']
+        sweep_points_list = []
+
+        min_bound = np.array([-70, -70, -3]).astype(np.float32)
+        max_bound = np.array([70, 70, 3]).astype(np.float32)
+
+        pnts_tr_all = []
+
+        for idx, d in [*sweeps_db.items(), *dd.items()]:
+            # d = sweeps_db[idx]
+            pnts,ints = d["pnts"],d["ints"]
+            sweep = obtain_sensor2top(nusc, idx, l2e_t,
+                                          l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
+            
             R = sweep["sensor2lidar_rotation"]
             t = sweep["sensor2lidar_translation"]
-
 
             R_es = Quaternion(sweep['sensor2ego_rotation']).rotation_matrix
             t_es = sweep['sensor2ego_translation']
@@ -560,13 +639,6 @@ def _fill_trainval_infos(nusc,
             data[:, 4] = np.arctan2(pnts[:, 2], np.linalg.norm(pnts[:, :2], axis=1))
             data[:, 5] = np.linalg.norm(pnts[:, :3], axis=1)
             pnts_tr_all.append(data)
-
-            # Save it
-            # os.makedirs(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}", exist_ok=True)
-            # pickle.dump(sweep, open(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}/{idx}.sweep.pickle", "wb"))
-            # o3d.t.io.write_point_cloud(f"/home/vasily/nuScenes_mini/lidar_debug/{kkkk}/{idx}.pcd", pcd)
-
-
 
         pnts_tr_all = np.vstack(pnts_tr_all)
 
@@ -595,9 +667,6 @@ def _fill_trainval_infos(nusc,
 
 
         ##### end lidar features generation
-
-
-
 
 
 
