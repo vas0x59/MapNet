@@ -65,7 +65,7 @@ aux_seg_cfg = dict(
     pv_seg=True,
     segmap=True,
     seg_classes=1,
-    segmap_classes=3, # layers=['ped_crossing', 'drivable_area', 'road_segment']
+    segmap_classes=2, # layers=['ped_crossing', 'drivable_area', 'road_segment']
     feat_down_sample=dict(
                         value=size_divisor,
                         img_backone=img_backbone_type,
@@ -73,7 +73,7 @@ aux_seg_cfg = dict(
     pv_thickness=1,
 )
 
-config='projects/mmdet3d_plugin/models/backbones/dinov2-base'
+config='ckpts/dinov2-small'
 model = dict(
     type='MapTRv2',
     use_grid_mask=True,
@@ -94,7 +94,7 @@ model = dict(
     ),
     img_neck=dict(
         type='FPN',
-        in_channels=[768],
+        in_channels=[384],
         out_channels=_dim_,
         start_level=0,
         add_extra_convs='on_output',
@@ -282,10 +282,10 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=1
+samples_per_gpu=4
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=0, # TODO 12
+    workers_per_gpu=4, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -355,12 +355,12 @@ optimizer = dict(
 #     weight_decay=0.01)
 
 # optimizer_config = dict(grad_clip=dict(max_norm=15, norm_type=2))
-optimizer_config = dict(cumulative_iters=16, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
+optimizer_config = dict(cumulative_iters=4, grad_clip=dict(max_norm=35, norm_type=2)) # GradientCumulativeFp16OptimizerHook
 # learning policy
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=4400,
+    warmup_iters=2200,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
 # lr_config = dict(
@@ -381,19 +381,19 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook'),
-        # dict(
-        #     type='WandbLoggerHook',
-        #     init_kwargs=dict(
-        #         project='mapnet_test_with_bsz2',   # Название проекта в WandB
-        #         name='4 bsz + dinov2-base 13 frz',     # Имя эксперимента
-        #         config=dict(                # Дополнительные настройки эксперимента
-        #             batch_size=samples_per_gpu,
-        #             model='mapqr',
-        #         )
-        #     )
-        # )
+        # dict(type='TensorboardLoggerHook'),
+        dict(
+            type='WandbLoggerHook',
+            init_kwargs=dict(
+                project='MapNet',   # Название проекта в WandB
+                name='dinov2-small + lora 2 layers',     # Имя эксперимента
+                config=dict(                # Дополнительные настройки эксперимента
+                    batch_size=samples_per_gpu,
+                    model='mapqr',
+                )
+            )
+        )
     ])
 fp16 = dict(loss_scale=512.)
-checkpoint_config = dict(max_keep_ckpts=3, interval=1)
+checkpoint_config = dict(max_keep_ckpts=5, interval=1)
 # find_unused_parameters=True
