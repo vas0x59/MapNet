@@ -90,7 +90,7 @@ if __name__ == '__main__':
     gt = torch.stack((line2, line3), dim=0).type(torch.float32)
     pred = torch.stack((line0, line1), dim=0).type(torch.float32)
 
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     # import mmcv
     # with mmcv.Timer():
     #     gt = upsampler(gt, pts=10)
