@@ -221,6 +221,8 @@ def main():
         # segmentation dataset has `PALETTE` attribute
         model.PALETTE = dataset.PALETTE
 
+    dataset._format_gt()
+
     if not distributed:
         assert False
         # model = MMDataParallel(model, device_ids=[0])

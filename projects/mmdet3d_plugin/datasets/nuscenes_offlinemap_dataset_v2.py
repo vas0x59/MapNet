@@ -669,6 +669,11 @@ class VectorizedLocalMap(object):
         gt_pts_num_3d = []
         gt_labels = []
         gt_instance = []
+
+        img_metas = example['img_metas']
+        if type(img_metas) is list:
+            print("\n", "len(img_metas)", len(img_metas), "\n")
+            img_metas = img_metas[0]
         if self.aux_seg['use_aux_seg']:
             if self.aux_seg['seg_classes'] == 1:
                 if self.aux_seg['bev_seg']:
@@ -677,11 +682,12 @@ class VectorizedLocalMap(object):
                     gt_semantic_mask = None
                 # import ipdb;ipdb.set_trace()
                 if self.aux_seg['pv_seg']:
-                    num_cam  = len(example['img_metas'].data['pad_shape'])
-                    img_shape = example['img_metas'].data['pad_shape'][0]
+                    
+                    num_cam  = len(img_metas.data['pad_shape'])
+                    img_shape = img_metas.data['pad_shape'][0]
                     # import ipdb;ipdb.set_trace()
                     gt_pv_semantic_mask = np.zeros((num_cam, 1, img_shape[0] // feat_down_sample, img_shape[1] // feat_down_sample), dtype=np.uint8)
-                    lidar2img = example['img_metas'].data['lidar2img']
+                    lidar2img = img_metas.data['lidar2img']
                     scale_factor = np.eye(4)
                     scale_factor[0, 0] *= 1/feat_down_sample
                     scale_factor[1, 1] *= 1/feat_down_sample
@@ -706,9 +712,9 @@ class VectorizedLocalMap(object):
                 else:
                     gt_semantic_mask = None
                 if self.aux_seg['pv_seg']:
-                    num_cam  = len(example['img_metas'].data['pad_shape'])
+                    num_cam  = len(img_metas.data['pad_shape'])
                     gt_pv_semantic_mask = np.zeros((num_cam, len(self.vec_classes), img_shape[0] // feat_down_sample, img_shape[1] // feat_down_sample), dtype=np.uint8)
-                    lidar2img = example['img_metas'].data['lidar2img']
+                    lidar2img = img_metas.data['lidar2img']
                     scale_factor = np.eye(4)
                     scale_factor[0, 0] *= 1/feat_down_sample
                     scale_factor[1, 1] *= 1/feat_down_sample
@@ -1650,12 +1656,21 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
         #     print(f'{key}')
         #     print(f'{key}: {input_dict[key]}')
         ############################################################ 
-        
+
+        print(input_dict.keys())
         example = self.pipeline(input_dict)
+
+        print(example.keys())
+        if "img_metas" not in example.keys():
+            print("no img_metas !!!")
+            return None
+            import ipdb; ipdb.set_trace()
         
         self.is_vis_on_test = True
         if self.is_vis_on_test:
             example = self.vectormap_pipeline(example, input_dict)
+        
+        
             
         ############################################################    
         # for key in example.keys():
@@ -1698,8 +1713,14 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
                 gt_anno = {}
                 gt_anno['sample_token'] = sample_token
                 # gt_sample_annos = []
-                gt_sample_dict = {}
-                gt_sample_dict = self.vectormap_pipeline(gt_sample_dict, self.data_infos[sample_id])
+                # gt_sample_dict = {}
+                # import ipdb; ipdb.set_trace()
+                input_dict = self.get_data_info(sample_id)
+                self.pre_pipeline(input_dict)
+                
+                gt_sample_dict = self.pipeline(input_dict)
+                gt_sample_dict = self.vectormap_pipeline(gt_sample_dict, input_dict)
+
                 gt_labels = gt_sample_dict['gt_labels_3d'].data.numpy()
                 gt_vecs = gt_sample_dict['gt_bboxes_3d'].data.instance_list
                 gt_vec_list = []

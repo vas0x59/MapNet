@@ -214,7 +214,12 @@ model = dict(
                     pos_weight=1.0,
                     loss_weight=2.0),
         loss_segmap=dict(type='DiceLoss',
-                    loss_weight=2.0),),
+                    loss_weight=2.0),
+        loss_lidar_bev_maps=dict( 
+                    type="SmoothL1Loss",
+                    loss_weight=3
+                 ),
+        ),
     # model training and testing settings
     train_cfg=dict(pts=dict(
         grid_size=[512, 512, 1],
@@ -377,17 +382,17 @@ log_config = dict(
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),
-        # dict(
-        #     type='WandbLoggerHook',
-        #     init_kwargs=dict(
-        #         project='mapnet_test_with_bsz2',   # Название проекта в WandB
-        #         name='1 bsz + r50',     # Имя эксперимента
-        #         config=dict(                # Дополнительные настройки эксперимента
-        #             batch_size=samples_per_gpu*2,
-        #             model='mapqr',
-        #         )
-        #     )
-        # )
+        dict(
+            type='WandbLoggerHook',
+            init_kwargs=dict(
+                project='mapnet_test_with_bsz2',   # Название проекта в WandB
+                name='2 bsz + r50 + segmap + lidar',     # Имя эксперимента
+                config=dict(                # Дополнительные настройки эксперимента
+                    batch_size=samples_per_gpu,
+                    model='mapqr',
+                )
+            )
+        )
     ])
 fp16 = dict(loss_scale=512.)
 checkpoint_config = dict(max_keep_ckpts=3, interval=1)
