@@ -184,7 +184,7 @@ class MapFMHead(DETRHead):
         self.aux_seg = aux_seg
         self.z_cfg = z_cfg
         
-        super(SegMapHead, self).__init__(
+        super(MapFMHead, self).__init__(
             *args, transformer=transformer, **kwargs)
         self.code_weights = nn.Parameter(torch.tensor(
             self.code_weights, requires_grad=False), requires_grad=False)
