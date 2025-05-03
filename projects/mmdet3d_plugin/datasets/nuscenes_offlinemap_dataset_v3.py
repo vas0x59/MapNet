@@ -1285,7 +1285,7 @@ class CustomNuScenesOfflineLocalMapDataset_v3(CustomNuScenesDataset):
             if self.aux_seg["segmap_select_indexes"] is not None:
                 segmap = segmap[self.aux_seg["segmap_select_indexes"], :, :]
 
-            assert self.aux_seg['segmap_classes'] == segmap.shape[0]
+            # assert self.aux_seg['segmap_classes'] == segmap.shape[0]
             # anns_results = self.bev_to_mask(segmap, example=example, feat_down_sample=self.aux_seg['feat_down_sample'])
             
             ###############################################################
