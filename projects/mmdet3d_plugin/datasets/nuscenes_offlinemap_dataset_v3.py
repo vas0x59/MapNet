@@ -672,7 +672,7 @@ class VectorizedLocalMap(object):
 
         img_metas = example['img_metas']
         if type(img_metas) is list:
-            print("\n", "len(img_metas)", len(img_metas), "\n")
+            # print("\n", "len(img_metas)", len(img_metas), "\n")
             img_metas = img_metas[0]
         if self.aux_seg['use_aux_seg']:
             if self.aux_seg['seg_classes'] == 1:
