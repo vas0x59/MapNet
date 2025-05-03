@@ -1657,10 +1657,10 @@ class CustomNuScenesOfflineLocalMapDataset_v3(CustomNuScenesDataset):
         #     print(f'{key}: {input_dict[key]}')
         ############################################################ 
 
-        print(input_dict.keys())
+        # print(input_dict.keys())
         example = self.pipeline(input_dict)
 
-        print(example.keys())
+        # print(example.keys())
         if "img_metas" not in example.keys():
             print("no img_metas !!!")
             return None
