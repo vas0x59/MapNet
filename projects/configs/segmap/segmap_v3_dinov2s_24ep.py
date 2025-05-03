@@ -287,7 +287,7 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=2
+samples_per_gpu=4
 data = dict(
     samples_per_gpu=samples_per_gpu,
     workers_per_gpu=4, # TODO 12
@@ -391,7 +391,7 @@ log_config = dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
                 project='MapNet',   # Название проекта в WandB
-                name='dinov2-small 11 frz + lidar',     # Имя эксперимента
+                name='dinov2-small 11 frz + lidar (w=2.0)',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
                     batch_size=samples_per_gpu,
                     model='mapqr',
