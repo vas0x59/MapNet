@@ -226,7 +226,7 @@ model = dict(
                     loss_weight=2.0),
         loss_lidar_bev_maps=dict( 
                     type="SmoothL1Loss",
-                    loss_weight=2.0
+                    loss_weight=0.0
                  )),
     # model training and testing settings
     train_cfg=dict(pts=dict(
@@ -245,7 +245,7 @@ model = dict(
                       weight=5),
             pc_range=point_cloud_range))))
 
-dataset_type = 'CustomNuScenesOfflineLocalMapDataset_v3'
+dataset_type = 'CustomNuScenesOfflineLocalMapDataset_v2'
 data_root = 'data/nuscenes/'
 file_client_args = dict(backend='disk')
 
@@ -290,14 +290,14 @@ test_pipeline = [
             dict(type='CustomCollect3D', keys=['img'])
         ])
 ]
-samples_per_gpu=1
+samples_per_gpu=4
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=0, # TODO 12
+    workers_per_gpu=4, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_map_infos_temporal_train_v3.pkl',
+        ann_file=data_root + 'nuscenes_map_infos_temporal_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -317,7 +317,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_map_infos_temporal_val_v3.pkl',
+        ann_file=data_root + 'nuscenes_map_infos_temporal_val.pkl',
         map_ann_file=data_root + 'nuscenes_map_anns_val.json',
         pipeline=test_pipeline,  bev_size=(bev_h_, bev_w_),
         pc_range=point_cloud_range,
@@ -329,7 +329,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_map_infos_temporal_val_v3.pkl',
+        ann_file=data_root + 'nuscenes_map_infos_temporal_val.pkl',
         map_ann_file=data_root + 'nuscenes_map_anns_val.json',
         pipeline=test_pipeline, 
         bev_size=(bev_h_, bev_w_),
@@ -368,7 +368,7 @@ optimizer_config = dict(cumulative_iters=4, grad_clip=dict(max_norm=35, norm_typ
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=88000,
+    warmup_iters=2200,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
 # lr_config = dict(
@@ -394,7 +394,7 @@ log_config = dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
                 project='MapNet',   # Название проекта в WandB
-                name='dinov2-small 11 frz + lidar (w=2.0)',     # Имя эксперимента
+                name='dinov2-small 11 frz + concat dinofeat',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
                     batch_size=samples_per_gpu,
                     model='mapqr',

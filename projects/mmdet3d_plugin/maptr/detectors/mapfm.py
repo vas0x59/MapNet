@@ -93,7 +93,7 @@ class MapFM(MVXTwoStageDetector):
                 img = self.grid_mask(img)
 
             img_feats = self.img_backbone(img)
-            import ipdb; ipdb.set_trace()
+            # import ipdb; ipdb.set_trace()
             # print(f'img: {img.shape}')
             # print(f'img_feats: {img_feats[0].shape}')
             if isinstance(img_feats, dict):
