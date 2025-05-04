@@ -36,6 +36,7 @@ class MapFM(MVXTwoStageDetector):
                  video_test_mode=False,
                  modality='vision',
                  lidar_encoder=None,
+                 concat_features_after_backbone=False
                  ):
 
         super(MapFM,
@@ -48,6 +49,7 @@ class MapFM(MVXTwoStageDetector):
             True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
         self.use_grid_mask = use_grid_mask
         self.fp16_enabled = False
+        self.concat_features_after_backbone = concat_features_after_backbone
 
         # temporal
         self.video_test_mode = video_test_mode
@@ -91,10 +93,13 @@ class MapFM(MVXTwoStageDetector):
                 img = self.grid_mask(img)
 
             img_feats = self.img_backbone(img)
+            import ipdb; ipdb.set_trace()
             # print(f'img: {img.shape}')
             # print(f'img_feats: {img_feats[0].shape}')
             if isinstance(img_feats, dict):
                 img_feats = list(img_feats.values())
+            if len(img_feats) > 1 and self.concat_features_after_backbone:
+                img_feats = [torch.cat(img_feats, axis=1)]
         else:
             return None
         if self.with_img_neck:
