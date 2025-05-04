@@ -97,6 +97,7 @@ class MapTRv2(MVXTwoStageDetector):
                 img_feats = list(img_feats.values())
         else:
             return None
+        # import ipdb; ipdb.set_trace();
         if self.with_img_neck:
             img_feats = self.img_neck(img_feats)
 

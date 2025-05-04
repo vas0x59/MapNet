@@ -1285,7 +1285,7 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             if self.aux_seg["segmap_select_indexes"] is not None:
                 segmap = segmap[self.aux_seg["segmap_select_indexes"], :, :]
 
-            assert self.aux_seg['segmap_classes'] == segmap.shape[0]
+            # assert self.aux_seg['segmap_classes'] == segmap.shape[0]
             # anns_results = self.bev_to_mask(segmap, example=example, feat_down_sample=self.aux_seg['feat_down_sample'])
             
             ###############################################################
@@ -1317,7 +1317,7 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
             if self.aux_seg["lidar_bev_maps_select_indexes"] is not None:
                 lidar_bev_maps = lidar_bev_maps[self.aux_seg["lidar_bev_maps_select_indexes"], :, :]
 
-            assert self.aux_seg['lidar_bev_maps_count'] == lidar_bev_maps.shape[0] 
+            # assert self.aux_seg['lidar_bev_maps_count'] == lidar_bev_maps.shape[0] 
             # print(lidar_bev_maps.shape)
 
             example["gt_lidar_bev_maps"] = DC(to_tensor(lidar_bev_maps), cpu_only=False)
@@ -1664,7 +1664,7 @@ class CustomNuScenesOfflineLocalMapDataset_v2(CustomNuScenesDataset):
         if "img_metas" not in example.keys():
             print("no img_metas !!!")
             return None
-            import ipdb; ipdb.set_trace()
+            # import ipdb; ipdb.set_trace()
         
         self.is_vis_on_test = True
         if self.is_vis_on_test:

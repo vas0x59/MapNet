@@ -515,7 +515,7 @@ class SegMapHead(DETRHead):
             output_lidar_bev_maps = self.lidar_bev_maps_head(seg_bev_embed)
 
 
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
 
         outs = {
             'bev_embed': bev_embed,
@@ -972,7 +972,7 @@ class SegMapHead(DETRHead):
                 loss_lidar_bev_maps = self.loss_lidar_bev_maps(lidar_bev_maps_output, lidar_bev_maps_gt ) 
                 loss_dict['loss_lidar_bev_maps'] = loss_lidar_bev_maps    
         
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
 
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:

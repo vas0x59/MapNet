@@ -105,7 +105,7 @@ def parse_args():
         warnings.warn('--options is deprecated in favor of --eval-options')
         args.eval_options = args.options
     return args
-
+# from torchviz import make_dot
 
 def main():
     args = parse_args()
@@ -222,6 +222,9 @@ def main():
         model.PALETTE = dataset.PALETTE
 
     dataset._format_gt()
+    
+    # make_dot(model, params=dict(list(model.named_parameters()))).render("model", format="svg")
+    print(model)
 
     if not distributed:
         assert False

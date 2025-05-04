@@ -63,8 +63,8 @@ aux_seg_cfg = dict(
     pv_seg=True,
     segmap=True,
     seg_classes=1,
-    segmap_classes=1, # layers=['ped_crossing', 'drivable_area', 'road_segment']
-    segmap_select_indexes=[1], # for data processing
+    segmap_classes=2, # layers=['ped_crossing', 'drivable_area', 'road_segment']
+    segmap_select_indexes=[0, 1], # for data processing
     feat_down_sample=16,
     pv_thickness=1,
     lidar_bev_maps=True,
@@ -214,10 +214,10 @@ model = dict(
                     pos_weight=1.0,
                     loss_weight=2.0),
         loss_segmap=dict(type='DiceLoss',
-                    loss_weight=2.0),
+                    loss_weight=4),
         loss_lidar_bev_maps=dict( 
                     type="SmoothL1Loss",
-                    loss_weight=3
+                    loss_weight=7
                  ),
         ),
     # model training and testing settings
@@ -283,7 +283,7 @@ test_pipeline = [
 samples_per_gpu=1
 data = dict(
     samples_per_gpu=samples_per_gpu,
-    workers_per_gpu=0, # TODO 12
+    workers_per_gpu=6, # TODO 12
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -370,7 +370,7 @@ lr_config = dict(
 #     warmup_ratio=1.0 / 3,
 #     min_lr_ratio=1e-3)
 total_epochs = 24
-evaluation = dict(interval=2, pipeline=test_pipeline, metric='chamfer',
+evaluation = dict(interval=3, pipeline=test_pipeline, metric='chamfer',
                   save_best='NuscMap_chamfer/mAP', rule='greater')
 # total_epochs = 50
 # evaluation = dict(interval=1, pipeline=test_pipeline)
@@ -386,7 +386,7 @@ log_config = dict(
             type='WandbLoggerHook',
             init_kwargs=dict(
                 project='mapnet_test_with_bsz2',   # Название проекта в WandB
-                name='2 bsz + r50 + segmap + lidar',     # Имя эксперимента
+                name='1 bsz + r50 + segmap + lidar w=10',     # Имя эксперимента
                 config=dict(                # Дополнительные настройки эксперимента
                     batch_size=samples_per_gpu,
                     model='mapqr',
